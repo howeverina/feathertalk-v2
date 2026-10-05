@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // 라이브 화면 (OBS 등에서 캡처)
-import { ArrowLeft, Mic } from '@lucide/vue'
+import { ArrowLeft, Camera, Crosshair, Mic } from '@lucide/vue'
 import { loadModel, resolveSrc } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
-import { Head, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
+import { Head, HairSystem, Wander, breath, cameraToTarget, headTarget, lookAt } from '~/lib/physics'
+import { WebcamTracker, type WebcamStatus } from '~/lib/webcam'
 
 // ---- 설정 (기존과 같은 localStorage 키) ----
 
@@ -17,12 +18,16 @@ const rig = ref(stored('ftRig', 60))
 const motionRange = ref(stored('ftMotionRange', 70)) // 자동 모션 범위 (%)
 const fps = ref(stored('ftFps', 60)) // 30이면 CPU/GPU 사용량이 절반 가까이
 const color = ref(localStorage.getItem('ftColor') || '#00ff00')
+const webcamOn = ref(localStorage.getItem('ftWebcam') == '1')
+const mirror = ref(localStorage.getItem('ftWebcamMirror') != '0') // 기본은 거울처럼
 
 watch(thres, v => localStorage.setItem('ftThres', String(v)))
 watch(rig, v => localStorage.setItem('ftRig', String(v)))
 watch(motionRange, v => localStorage.setItem('ftMotionRange', String(v)))
 watch(fps, v => localStorage.setItem('ftFps', String(v)))
 watch(color, v => localStorage.setItem('ftColor', v))
+watch(webcamOn, v => localStorage.setItem('ftWebcam', v ? '1' : '0'))
+watch(mirror, v => localStorage.setItem('ftWebcamMirror', v ? '1' : '0'))
 
 const idle = ref(false)
 const talking = ref(false)
@@ -82,6 +87,36 @@ function autoMotion(now: number) {
   target = wander.update(now, motionRange.value / 100)
 }
 
+// ---- 웹캠 (얼굴 각도만) ----
+
+const tracker = new WebcamTracker()
+const camStatus = ref<WebcamStatus>('off')
+tracker.onStatus = s => camStatus.value = s
+try {
+  const z = JSON.parse(localStorage.getItem('ftWebcamZero') || 'null')
+  if (z) tracker.zero = z
+} catch (e) {}
+
+const CAM_STATUS: Record<WebcamStatus, string> = {
+  off: '',
+  loading: '불러오는 중…',
+  tracking: '얼굴 인식 중',
+  searching: '얼굴을 찾는 중',
+  error: '',
+}
+const camStatusText = computed(() => camStatus.value == 'error' ? tracker.error : CAM_STATUS[camStatus.value])
+
+function toggleWebcam() {
+  webcamOn.value = !webcamOn.value
+  if (webcamOn.value) tracker.start()
+  else tracker.stop()
+}
+
+function calibrate() {
+  tracker.calibrate()
+  localStorage.setItem('ftWebcamZero', JSON.stringify(tracker.zero))
+}
+
 // ---- 마이크 (입) ----
 
 let volume = 0
@@ -123,6 +158,7 @@ onMounted(() => {
   window.addEventListener('keydown', onKey)
   document.addEventListener('mousemove', onMouseMove)
   startMic()
+  if (webcamOn.value) tracker.start()
 
   const head = new Head()
   const hair = new HairSystem()
@@ -135,8 +171,19 @@ onMounted(() => {
     const dt = (now - last) / 1000
     last = now
 
-    autoMotion(now)
-    head.update(dt, headTarget(target.x, target.y, model.rig, rig.value), model.rig.bounce)
+    // 웹캠에 얼굴이 잡히면 웹캠을 따르고, 놓치면 이어서 자동 모션
+    const pose = webcamOn.value ? tracker.pose(mirror.value) : null
+    let rollN: number | undefined
+    if (pose) {
+      const c = cameraToTarget(pose)
+      target = { x: c.x, y: c.y }
+      rollN = c.roll
+      auto = false
+      lastMouse = -Infinity
+    } else {
+      autoMotion(now)
+    }
+    head.update(dt, headTarget(target.x, target.y, model.rig, rig.value, rollN), model.rig.bounce)
     const h = head.state
     const b = breath(now / 1000, model.rig.breath, model.center)
     const isTalking = volume >= thres.value
@@ -164,6 +211,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('mousemove', onMouseMove)
   audio?.stream.getTracks().forEach(t => t.stop())
   audio?.ctx.close()
+  tracker.stop()
   renderer?.destroy()
 })
 </script>
@@ -179,6 +227,18 @@ onBeforeUnmount(() => {
         <span>프레임</span>
         <select v-model.number="fps"><option :value="60">60fps</option><option :value="30">30fps (가볍게)</option></select>
       </label>
+      <span class="cam">
+        <button class="cam-toggle" :class="{ on: webcamOn }" title="웹캠으로 얼굴 각도만 따라가요. 영상은 화면에 띄우거나 어디로 보내지 않아요." @click="toggleWebcam">
+          <Camera :size="15" /> 웹캠
+        </button>
+        <template v-if="webcamOn">
+          <span class="cam-status" :class="camStatus">{{ camStatusText }}</span>
+          <button v-if="camStatus == 'tracking'" class="cam-toggle" title="지금 자세를 정면으로 잡아요. 카메라가 모니터 옆이나 위에 있을 때 눌러 주세요." @click="calibrate">
+            <Crosshair :size="15" /> 정면 맞추기
+          </button>
+          <label title="켜면 거울처럼, 내가 왼쪽을 보면 캐릭터도 화면 왼쪽을 봐요"><input v-model="mirror" type="checkbox"> 좌우 반전</label>
+        </template>
+      </span>
       <label><span>배경색</span><input v-model="color" type="color"></label>
       <span class="hint">숫자키 1~0: 표정 전환 · <Mic class="mic" :class="{ on: talking }" :size="14" :title="talking ? '말하는 중' : '조용함'" /></span>
     </div>
@@ -254,6 +314,42 @@ body.live.idle {
   gap: 4px;
   font-size: 12px;
   color: var(--muted);
+}
+
+.cam {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cam-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #ddd;
+  background: white;
+  border-radius: 8px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.cam-toggle.on {
+  background: var(--main);
+  border-color: var(--main);
+  color: white;
+}
+
+.cam-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cam-status.tracking {
+  color: var(--main-dark);
+}
+
+.cam-status.error {
+  color: #e5484d;
 }
 
 .mic {

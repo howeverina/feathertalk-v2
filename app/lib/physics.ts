@@ -195,12 +195,23 @@ export function lookAt(px: number, py: number, fx: number, fy: number, S: number
   return { x: (px - fx) / R, y: (py - fy) / R }
 }
 
-export function headTarget(nx: number, ny: number, rig: Model['rig'], strength = 100): HeadState {
+// rollN: 기울기 (-1 ~ 1). 생략하면 좌우 위치를 따라 기운다 (마우스/자동 모션), 웹캠은 실제 기울기를 넘긴다.
+export function headTarget(nx: number, ny: number, rig: Model['rig'], strength = 100, rollN?: number): HeadState {
   const s = strength / 100
   ;({ x: nx, y: ny } = limitToCircle(nx, ny))
+  const r = rollN === undefined ? nx : Math.max(-1, Math.min(1, rollN))
   return {
     yaw: nx * 0.35 * rig.yaw / 100 * s,
     pitch: ny * 0.25 * rig.pitch / 100 * s,
-    roll: nx * 0.13 * rig.roll / 100 * s,
+    roll: r * 0.13 * rig.roll / 100 * s,
+  }
+}
+
+// 웹캠 각도(rad)를 headTarget 입력(-1 ~ 1)으로. 고개를 이만큼 돌리면 최대로 움직인다.
+export function cameraToTarget(pose: { yaw: number; pitch: number; roll: number }) {
+  return {
+    x: pose.yaw / 0.5, // 약 30°
+    y: pose.pitch / 0.35, // 약 20°
+    roll: pose.roll / 0.35, // 약 20°
   }
 }
