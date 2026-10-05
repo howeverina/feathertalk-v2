@@ -12,7 +12,7 @@ function stored(key: string, fallback: number) {
 }
 
 const thres = ref(stored('ftThres', 30))
-const rig = ref(stored('ftRig', 100))
+const rig = ref(stored('ftRig', 60))
 const motionRange = ref(stored('ftMotionRange', 70)) // 자동 모션 범위 (%)
 const fps = ref(stored('ftFps', 60)) // 30이면 CPU/GPU 사용량이 절반 가까이
 const color = ref(localStorage.getItem('ftColor') || '#00ff00')
