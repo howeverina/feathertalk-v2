@@ -1,0 +1,133 @@
+
+@font-face {
+    font-family: 'Pretendard';
+    src: url('https://fastly.jsdelivr.net/gh/Project-Noonnu/noonfonts_2107@1.1/Pretendard-Regular.woff') format('woff');
+    font-weight: 400;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Pretendard';
+    src: url('https://fastly.jsdelivr.net/gh/Project-Noonnu/noonfonts_2107@1.1/Pretendard-Bold.woff') format('woff');
+    font-weight: 700;
+    font-style: normal;
+}
+
+body {
+    font-family: 'Pretendard';
+    height: 100dvh;
+    width: 100vw;
+    background-color: #00ff00;
+    color: #444;
+}
+
+#character {
+    position: fixed;
+    top: 3rem;
+    left: calc(50vw - min(50vw, 50dvh));
+    transform-origin:  min(50vw, 50dvh) min(100vw, 100dvh);
+}
+
+.live2d {
+    width: min(100vw, 100dvh);
+    height: min(100vw, 100dvh);
+    overflow: hidden;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.live2dleft {
+    width: min(50vw, 50dvh);
+    height: min(100vw, 100dvh);
+    overflow: hidden;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.live2dright {
+    width: min(50vw, 50dvh);
+    height: min(100vw, 100dvh);
+    overflow: hidden;
+    position: absolute;
+    top: 0;
+    left: min(50vw, 50dvh);
+}
+
+#bangl, #mouthl, #eyesl, #facel {
+    width: min(100vw, 100dvh);
+    height: min(100vw, 100dvh);
+    position: absolute;
+    left: 0;
+}
+
+#bangr, #mouthr, #eyesr, #facer {
+    width: min(100vw, 100dvh);
+    height: min(100vw, 100dvh);
+    position: absolute;
+    right: 0;
+}
+
+#bangl, #bangr {
+    z-index: 99;
+}
+
+#mouthl, #mouthr {
+    z-index: 98;
+}
+
+#eyesl, #eyesr {
+    z-index: 97;
+}
+
+#facel, #facer {
+    z-index: 96;
+}
+
+#body {
+    z-index: 95;
+}
+
+#back {
+    z-index: 94;
+}
+
+
+input {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 10px;
+  background: #fff;
+  outline: none;
+  opacity: 1;
+  border-radius: 5px;
+}
+
+input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #444;
+  cursor: pointer;
+  border: 0;
+  border-radius: 10px;
+}
+
+input::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: #444;
+  cursor: pointer;
+  border: 0;
+}
+
+.reverseInput{
+   -webkit-transform: rotateY(180deg);
+   -moz-transform: rotateY(180deg);
+   -ms-transform: rotateY(180deg);
+   -o-transform: rotateY(180deg);
+   transform: rotateY(180deg);
+}

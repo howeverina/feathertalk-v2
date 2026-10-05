@@ -1,0 +1,185 @@
+@font-face {
+    font-family: 'Pretendard';
+    src: url('https://fastly.jsdelivr.net/gh/Project-Noonnu/noonfonts_2107@1.1/Pretendard-Regular.woff') format('woff');
+    font-weight: 400;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Pretendard';
+    src: url('https://fastly.jsdelivr.net/gh/Project-Noonnu/noonfonts_2107@1.1/Pretendard-Bold.woff') format('woff');
+    font-weight: 700;
+    font-style: normal;
+}
+
+:root {
+    --main: #86D7FF;
+    --main-dark: #3fb5ee;
+    --hair: #ff6b8a;
+    --bg: #eef2f5;
+    --line: #e4e8ec;
+    --text: #444;
+    --muted: #999;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Pretendard', sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text);
+    margin: 0;
+}
+
+button, input, select {
+    font: inherit;
+    color: inherit;
+}
+
+a {
+    text-decoration: none;
+    color: var(--main-dark);
+}
+
+input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    background: #e4ecf2;
+    border-radius: 5px;
+    outline: none;
+}
+
+input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: var(--main-dark);
+    border: 3px solid white;
+    box-shadow: 0 0 0 1px var(--main-dark);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+input[type=range]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    background: var(--main-dark);
+    border: 3px solid white;
+    box-shadow: 0 0 0 1px var(--main-dark);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+/* ---- 편집기 공통 ---- */
+
+body.editor {
+    background-color: var(--bg);
+}
+
+.panel {
+    position: relative;
+    padding: 14px 16px;
+    background-color: white;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+}
+
+.panel h3 {
+    margin: 0 0 8px;
+    font-size: 1.05rem;
+}
+
+.panel h3 small {
+    font-weight: 400;
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-left: 6px;
+}
+
+.panel h4 {
+    margin: 18px 0 6px;
+    font-size: 0.95rem;
+    color: var(--main-dark);
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.panel input[type=text], .panel select {
+    padding: 6px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: white;
+    width: 100%;
+}
+
+.seg {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.seg button {
+    border: 0;
+    background: white;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.seg button + button {
+    border-left: 1px solid var(--line);
+}
+
+.seg button.on {
+    background: var(--main);
+    color: white;
+}
+
+.seg.small button {
+    padding: 3px 9px;
+}
+
+button.primary {
+    width: 100%;
+    padding: 6px 14px;
+    background-color: var(--main);
+    color: white;
+    border-radius: 10px;
+    font-weight: 700;
+    border: 0;
+    cursor: pointer;
+}
+
+button.plain {
+    border: 1px solid var(--line);
+    background: white;
+    border-radius: 10px;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+.tip, .desc, .small {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin: 6px 0 0;
+}
+
+.error {
+    font-size: 0.8rem;
+    color: #e5484d;
+    background: #fff0f0;
+    border-radius: 8px;
+    padding: 6px 8px;
+    margin: 6px 0 0;
+}

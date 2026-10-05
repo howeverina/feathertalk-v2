@@ -1,0 +1,127 @@
+
+@font-face {
+    font-family: 'Pretendard';
+    src: url('https://fastly.jsdelivr.net/gh/Project-Noonnu/noonfonts_2107@1.1/Pretendard-Regular.woff') format('woff');
+    font-weight: 400;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Pretendard';
+    src: url('https://fastly.jsdelivr.net/gh/Project-Noonnu/noonfonts_2107@1.1/Pretendard-Bold.woff') format('woff');
+    font-weight: 700;
+    font-style: normal;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Pretendard';
+    font-size: 16px;
+    line-height: 1.8;
+    background-color: #eee;
+    color: #444;
+    margin: 0;
+    padding: 0;
+}
+
+#navbar {
+    background-color: #86D7FF;
+    color: white;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3rem;
+    width: 100vw;
+}
+
+#logo h2 {
+    margin-top: 0.3rem;
+    text-align: center;
+}
+
+#wrapper {
+    margin: 5rem auto;
+    width: 100%;
+    max-width: 1000px;
+}
+
+#wrapper > div {
+    padding: 10px;
+    background-color: white;
+    border-radius: 10px;
+    margin-bottom: 1rem;
+}
+
+#gotolive {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.form {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    row-gap: 15px;
+    column-gap: 10px;
+}
+
+.form:not(.activated) {
+    display: none;
+}
+
+.form > div > img {
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid #eee;
+}
+
+input {
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid #eee;
+    width: 100%;
+}
+
+.button {
+    width: 100px;
+    min-width: 100px;
+    text-align: center;
+    padding: 7px;
+    background-color: #86D7FF;
+    color: white;
+    border-radius: 10px;
+    text-decoration-line: none;
+    font-weight: 700;
+}
+
+a {
+    text-decoration: none;
+    color: #86D7FF;
+}
+
+ul, .small {
+    font-size: 0.8em;
+    color: #ccc;
+}
+
+#tablist {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
+    gap: 10px;
+}
+
+#tablist > div.selected {
+    background-color: #86D7FF;
+    color: white;
+}
+
+#tablist > div {
+    border-radius: 10px;
+    background-color: white;
+    color: #86D7FF;
+    text-align: center;
+    border: 1px solid #eee;
+}
