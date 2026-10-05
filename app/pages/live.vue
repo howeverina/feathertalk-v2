@@ -14,11 +14,13 @@ function stored(key: string, fallback: number) {
 const thres = ref(stored('ftThres', 30))
 const rig = ref(stored('ftRig', 100))
 const motionRange = ref(stored('ftMotionRange', 70)) // 자동 모션 범위 (%)
+const fps = ref(stored('ftFps', 60)) // 30이면 CPU/GPU 사용량이 절반 가까이
 const color = ref(localStorage.getItem('ftColor') || '#00ff00')
 
 watch(thres, v => localStorage.setItem('ftThres', String(v)))
 watch(rig, v => localStorage.setItem('ftRig', String(v)))
 watch(motionRange, v => localStorage.setItem('ftMotionRange', String(v)))
+watch(fps, v => localStorage.setItem('ftFps', String(v)))
 watch(color, v => localStorage.setItem('ftColor', v))
 
 const idle = ref(false)
@@ -126,6 +128,9 @@ onMounted(() => {
   let last = performance.now()
 
   function frame(now: number) {
+    raf = requestAnimationFrame(frame)
+    // 30fps면 한 프레임 건너뛰고 그린다 (모니터 주사율 오차를 감안해 약간 여유)
+    if (now - last < 1000 / fps.value - 4) return
     const dt = (now - last) / 1000
     last = now
 
@@ -146,7 +151,6 @@ onMounted(() => {
       mouthOpen: isTalking && now % 400 >= 200,
       hair: hair.update(dt, model.layers, h, now / 1000, b.hairLag),
     })
-    raf = requestAnimationFrame(frame)
   }
   raf = requestAnimationFrame(frame)
 })
@@ -170,6 +174,10 @@ onBeforeUnmount(() => {
       <label><span>마이크 민감도</span><input v-model.number="thres" class="reverse" type="range" min="0" max="100"></label>
       <label><span>리깅 강도</span><input v-model.number="rig" type="range" min="0" max="200"></label>
       <label title="마우스를 멈추면 캐릭터가 알아서 둘러봐요. 왼쪽은 정면 근처에서만, 오른쪽은 크게 왔다갔다해요."><span>자동 모션 범위</span><input v-model.number="motionRange" type="range" min="10" max="100"></label>
+      <label title="30으로 낮추면 컴퓨터 사용량이 절반 가까이 줄어요. 대신 움직임이 조금 덜 부드러워요.">
+        <span>프레임</span>
+        <select v-model.number="fps"><option :value="60">60fps</option><option :value="30">30fps (가볍게)</option></select>
+      </label>
       <label><span>배경색</span><input v-model="color" type="color"></label>
       <span class="hint">숫자키 1~0: 표정 전환 · 마이크 <b class="mic" :class="{ on: talking }">●</b></span>
     </div>

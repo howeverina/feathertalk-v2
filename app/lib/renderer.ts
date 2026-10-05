@@ -133,6 +133,31 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   const textures = new Map<string, { key: string; tex: WebGLTexture | null; ready: boolean }>()
   let layers: Layer[] = []
 
+  // 이 모니터에서 그려질 수 있는 최대 크기 (캐릭터 정사각형은 화면의 짧은 변을 넘지 않는다)
+  function maxTextureSize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    return Math.min(2048, gl.getParameter(gl.MAX_TEXTURE_SIZE), Math.ceil(Math.min(screen.width, screen.height) * dpr))
+  }
+
+  // 그보다 큰 이미지는 줄여서 올린다 (GPU 메모리 절약, 화질 차이 없음).
+  // 줄이기를 지원하지 않는 브라우저에선 원본 그대로 쓴다.
+  async function fitImage(img: HTMLImageElement): Promise<HTMLImageElement | ImageBitmap> {
+    const max = maxTextureSize()
+    const w = img.naturalWidth, h = img.naturalHeight
+    if (Math.max(w, h) <= max || typeof createImageBitmap == 'undefined') return img
+    const k = max / Math.max(w, h)
+    try {
+      return await createImageBitmap(img, {
+        resizeWidth: Math.round(w * k),
+        resizeHeight: Math.round(h * k),
+        resizeQuality: 'high',
+        premultiplyAlpha: 'premultiply',
+      })
+    } catch (e) {
+      return img
+    }
+  }
+
   function loadTexture(layer: Layer, resolveSrc: (l: Layer) => Promise<string>) {
     const key = layer.src.type + ':' + layer.src.value
     const cur = textures.get(layer.id)
@@ -145,8 +170,12 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
       if (!url || textures.get(layer.id) !== entry) return
       const img = new Image()
       if (!url.startsWith('blob:') && !url.startsWith('data:')) img.crossOrigin = 'anonymous'
-      img.onload = () => {
-        if (textures.get(layer.id) !== entry) return
+      img.onload = async () => {
+        const source = await fitImage(img)
+        if (textures.get(layer.id) !== entry) {
+          if (source instanceof ImageBitmap) source.close()
+          return
+        }
         const tex = gl.createTexture()
         gl.bindTexture(gl.TEXTURE_2D, tex)
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
@@ -154,7 +183,8 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
         try {
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source)
+          if (source instanceof ImageBitmap) source.close() // 줄인 이미지 메모리 바로 해제
           entry.tex = tex
           entry.ready = true
         } catch (e) {
