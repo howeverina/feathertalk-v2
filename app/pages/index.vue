@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // 편집기
+import { CircleHelp, Play } from '@lucide/vue'
+
 useHead({ bodyAttrs: { class: 'editor' } })
 
 const ed = useEditor()
@@ -41,12 +43,12 @@ function reset() {
     <header class="navbar">
       <h2 class="logo">Feather-Talk</h2>
       <div class="nav-actions">
-        <button class="ghost" @click="toggleGuide">? 사용법</button>
+        <button class="ghost" @click="toggleGuide"><CircleHelp :size="15" /> 사용법</button>
         <button class="ghost" title="레이어 설정과 업로드한 이미지를 파일 하나로 저장해요" @click="ed.exportBackup()">백업 내보내기</button>
         <button class="ghost" title="백업 파일에서 불러와요 (지금 설정은 덮어써져요)" @click="importInput?.click()">불러오기</button>
         <input ref="importInput" type="file" accept=".json,application/json" hidden @change="onImport">
         <button class="ghost" title="assets 폴더의 기본 그림으로 처음부터 시작해요" @click="reset">기본 캐릭터로 되돌리기</button>
-        <a class="button" href="/live">라이브 시작 ▶</a>
+        <a class="button" href="/live">라이브 시작 <Play :size="14" /></a>
       </div>
     </header>
 
@@ -111,6 +113,12 @@ function reset() {
   flex-wrap: wrap;
 }
 
+.ghost, .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .ghost {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.7);
@@ -121,7 +129,6 @@ function reset() {
 }
 
 .button {
-  display: inline-block;
   padding: 6px 14px;
   background-color: white;
   color: var(--main-dark);

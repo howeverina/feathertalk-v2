@@ -151,6 +151,10 @@ body.editor {
 }
 
 button.primary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
     width: 100%;
     padding: 6px 14px;
     background-color: var(--main);

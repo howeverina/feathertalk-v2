@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 라이브 화면 (OBS 등에서 캡처)
+import { ArrowLeft, Mic } from '@lucide/vue'
 import { loadModel, resolveSrc } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
 import { Head, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
@@ -170,7 +171,7 @@ onBeforeUnmount(() => {
 <template>
   <div>
     <div class="controls">
-      <a href="/" class="back" title="편집기로 돌아가기">← 편집</a>
+      <a href="/" class="back" title="편집기로 돌아가기"><ArrowLeft :size="15" /> 편집</a>
       <label><span>마이크 민감도</span><input v-model.number="thres" class="reverse" type="range" min="0" max="100"></label>
       <label><span>리깅 강도</span><input v-model.number="rig" type="range" min="0" max="200"></label>
       <label title="마우스를 멈추면 캐릭터가 알아서 둘러봐요. 왼쪽은 정면 근처에서만, 오른쪽은 크게 왔다갔다해요."><span>자동 모션 범위</span><input v-model.number="motionRange" type="range" min="10" max="100"></label>
@@ -179,7 +180,7 @@ onBeforeUnmount(() => {
         <select v-model.number="fps"><option :value="60">60fps</option><option :value="30">30fps (가볍게)</option></select>
       </label>
       <label><span>배경색</span><input v-model="color" type="color"></label>
-      <span class="hint">숫자키 1~0: 표정 전환 · 마이크 <b class="mic" :class="{ on: talking }">●</b></span>
+      <span class="hint">숫자키 1~0: 표정 전환 · <Mic class="mic" :class="{ on: talking }" :size="14" :title="talking ? '말하는 중' : '조용함'" /></span>
     </div>
     <canvas ref="stage" class="stage" />
     <div v-if="noGL" class="nogl">
@@ -240,10 +241,17 @@ body.live.idle {
 }
 
 .back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   font-weight: 700;
 }
 
+
 .hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
   color: var(--muted);
 }

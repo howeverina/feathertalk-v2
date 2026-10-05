@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { X } from '@lucide/vue'
+
 defineEmits<{ close: [] }>()
 </script>
 
 <template>
   <section class="panel guide">
-    <button class="close" title="닫기" @click="$emit('close')">×</button>
+    <button class="close" title="닫기" @click="$emit('close')"><X :size="20" /></button>
     <h3>처음 오셨나요? 세 단계면 충분해요</h3>
     <ol class="steps">
       <li>
@@ -43,7 +45,9 @@ defineEmits<{ close: [] }>()
   right: 10px;
   border: 0;
   background: none;
-  font-size: 1.4rem;
+  display: grid;
+  place-items: center;
+  padding: 4px;
   color: var(--muted);
   cursor: pointer;
 }

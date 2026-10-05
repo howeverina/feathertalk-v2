@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ChevronDown, ChevronUp, Eye, EyeOff, GripVertical, Plus, Trash2, TriangleAlert } from '@lucide/vue'
 import { PRESETS, SHOW_OPTIONS, type Layer, type PresetKey } from '~/lib/model'
 
 const ed = useEditor()
@@ -9,7 +10,7 @@ const showLabel = Object.fromEntries(SHOW_OPTIONS)
 
 function badges(l: Layer) {
   const out: [string, string][] = []
-  if (imageErrors.has(l.id)) out.push(['⚠ 이미지 오류', 'err'])
+  if (imageErrors.has(l.id)) out.push(['이미지 오류', 'err'])
   else if (!l.src.value) out.push(['이미지 없음', ''])
   if (l.part == 'body') out.push(['몸', ''])
   if (l.show != 'always') out.push([showLabel[l.show]!, ''])
@@ -60,19 +61,22 @@ function onDragEnd() {
         @drop.prevent="onDrop(l)"
         @dragend="onDragEnd"
       >
-        <span class="grip" title="끌어서 순서 변경">⋮⋮</span>
+        <GripVertical class="grip" :size="16" aria-label="끌어서 순서 변경" />
         <LayerImage :layer="l" class="thumb" />
         <span class="name">
           {{ l.name || '(이름 없음)' }}
-          <span v-for="[text, cls] in badges(l)" :key="text" class="badge" :class="cls">{{ text }}</span>
+          <span v-for="[text, cls] in badges(l)" :key="text" class="badge" :class="cls"><TriangleAlert v-if="cls == 'err'" :size="11" />{{ text }}</span>
         </span>
-        <button class="icon" :title="l.visible ? '숨기기' : '보이기'" @click.stop="l.visible = !l.visible">{{ l.visible ? '👁' : '🙈' }}</button>
-        <button class="icon" title="한 칸 앞으로" @click.stop="ed.moveLayer(i, i - 1)">▲</button>
-        <button class="icon" title="한 칸 뒤로" @click.stop="ed.moveLayer(i, i + 1)">▼</button>
-        <button class="icon" title="삭제" @click.stop="remove(l)">🗑</button>
+        <button class="icon" :title="l.visible ? '숨기기' : '보이기'" @click.stop="l.visible = !l.visible">
+          <Eye v-if="l.visible" :size="17" />
+          <EyeOff v-else :size="17" />
+        </button>
+        <button class="icon" title="한 칸 앞으로" @click.stop="ed.moveLayer(i, i - 1)"><ChevronUp :size="17" /></button>
+        <button class="icon" title="한 칸 뒤로" @click.stop="ed.moveLayer(i, i + 1)"><ChevronDown :size="17" /></button>
+        <button class="icon" title="삭제" @click.stop="remove(l)"><Trash2 :size="17" /></button>
       </li>
     </ul>
-    <button class="primary" @click="menuOpen = !menuOpen">+ 레이어 추가</button>
+    <button class="primary" @click="menuOpen = !menuOpen"><Plus :size="16" /> 레이어 추가</button>
     <div v-if="menuOpen" class="add-menu">
       <button v-for="[key, p] in presets" :key="key" @click="add(key)">{{ p.label }}</button>
     </div>
@@ -119,7 +123,7 @@ li.drag-over {
 .grip {
   cursor: grab;
   color: #ccc;
-  user-select: none;
+  flex: none;
 }
 
 .thumb {
@@ -140,6 +144,10 @@ li.drag-over {
 }
 
 .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  vertical-align: middle;
   font-size: 0.7rem;
   padding: 0 6px;
   border-radius: 6px;
@@ -159,6 +167,8 @@ li.drag-over {
 }
 
 .icon {
+  display: inline-grid;
+  place-items: center;
   border: 0;
   background: none;
   cursor: pointer;
