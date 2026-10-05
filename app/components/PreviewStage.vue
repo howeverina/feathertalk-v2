@@ -164,6 +164,9 @@ onMounted(() => {
   // 레이어 구성/이미지가 바뀌면 렌더러에 알린다 (렌더러는 매 프레임 원본 객체를 읽는다)
   watch(model, () => renderer?.setLayers(toRaw(model.value).layers, resolveSrc), { deep: true, immediate: true })
 
+  // 라이브 화면의 '리깅 강도'와 같은 값으로 미리보기 (기본 60)
+  const storedRig = parseInt(localStorage.getItem('ftRig') || '')
+  const rigStrength = isNaN(storedRig) ? 60 : storedRig
   const head = new Head()
   const hair = new HairSystem()
   let last = performance.now()
@@ -176,7 +179,7 @@ onMounted(() => {
     if (preview.mode == 'auto') preview.target = wander.update(now)
     // 핸들을 끄는 동안이나 정면 고정일 땐 정면을 본다
     const t = preview.drag || preview.mode == 'still' ? { x: 0, y: 0 } : preview.target
-    head.update(dt, headTarget(t.x, t.y, m.rig), m.rig.bounce)
+    head.update(dt, headTarget(t.x, t.y, m.rig, rigStrength), m.rig.bounce)
     const h = head.state
     const b = breath(now / 1000, m.rig.breath, m.center)
 
