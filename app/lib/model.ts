@@ -28,12 +28,15 @@ export interface Layer {
   depth: number
   curve: number
   hair: HairParams
+  clip: boolean // 바로 뒤(아래) 레이어의 그림 안쪽에만 보이기 (클리핑 마스크)
+  pop: boolean // 깜빡일 때 눌렸다가 통통 튀며 돌아오기 (눈동자용)
 }
 
 export interface Model {
   version: 2
   center: { x: number; y: number; r: number }
   rig: { yaw: number; pitch: number; roll: number; bounce: number; breath: number }
+  eyes: { y: number; h: number } // 깜빡임 때 세로로 눌리는 눈 영역 (가운데 높이, 반높이)
   layers: Layer[]
 }
 
@@ -41,7 +44,11 @@ export interface FaceState {
   expression: number
   eyesClosed: boolean
   mouthOpen: boolean
+  blink?: number // 0(뜸) ~ 1(감음). 있으면 eyesClosed 대신 쓴다
 }
+
+// 깜빡임이 이만큼 진행되면 뜬 눈 → 감은 눈 그림으로 바꾼다 (그 전까지는 뜬 눈을 눌러서 감기는 느낌)
+export const BLINK_SWAP = 0.9
 
 export const SHOW_OPTIONS: [ShowMode, string][] = [
   ['always', '항상'],
@@ -96,6 +103,8 @@ export function newLayer(presetKey: PresetKey = 'blank', src = ''): Layer {
     depth: p.depth || 0,
     curve: p.curve || 0,
     hair: { ...HAIR_OFF, ...(p.hair || {}) },
+    clip: false,
+    pop: false,
   }
 }
 
@@ -129,6 +138,7 @@ function baseModel(): Model {
     version: 2,
     center: { x: 0.5, y: 0.4, r: 0.25 },
     rig: { yaw: 100, pitch: 100, roll: 100, bounce: 50, breath: 50 },
+    eyes: { y: 0.4, h: 0.05 },
     layers: [],
   }
 }
@@ -170,6 +180,7 @@ export function normalizeModel(raw: any): Model {
   const m: Model = { ...base, ...raw }
   m.center = { ...base.center, ...raw.center }
   m.rig = { ...base.rig, ...raw.rig }
+  m.eyes = { ...base.eyes, ...raw.eyes }
   m.layers = (raw.layers || []).map((l: any) => {
     const d = newLayer('blank')
     const layer: Layer = {
@@ -206,11 +217,12 @@ export function saveModel(m: Model) {
   localStorage.setItem(KEY, JSON.stringify(m))
 }
 
-export function isVisible(layer: Layer, { expression, eyesClosed, mouthOpen }: FaceState) {
+export function isVisible(layer: Layer, { expression, eyesClosed, mouthOpen, blink }: FaceState) {
   if (!layer.visible || !layer.expressions[expression]) return false
+  const b = blink ?? (eyesClosed ? 1 : 0)
   switch (layer.show) {
-    case 'eyesOpen': return !eyesClosed
-    case 'eyesClosed': return eyesClosed
+    case 'eyesOpen': return b < BLINK_SWAP
+    case 'eyesClosed': return b >= BLINK_SWAP
     case 'mouthClosed': return !mouthOpen
     case 'mouthOpen': return mouthOpen
   }

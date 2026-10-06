@@ -5,7 +5,7 @@ import {
 } from '~/lib/model'
 
 export type MotionMode = 'mouse' | 'auto' | 'still'
-export type Handle = 'center' | 'radius' | 'anchor'
+export type Handle = 'center' | 'radius' | 'anchor' | 'eyes' | 'eyesSize'
 
 function createEditor() {
   const model = ref<Model>(loadModel())

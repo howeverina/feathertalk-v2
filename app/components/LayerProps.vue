@@ -104,6 +104,19 @@ function toggleAll() {
           <button :class="{ on: selected.part == 'body' }" title="고개를 돌려도 그대로 있어요 (기울기만 따라가요)" @click="selected.part = 'body'">몸</button>
         </div>
       </div>
+      <label class="check-row">
+        <input v-model="selected.clip" type="checkbox">
+        <span><b>아래 레이어에 맞춰 자르기 (클리핑)</b></span>
+      </label>
+      <p class="desc">
+        켜면 목록에서 바로 아래(뒤) 레이어의 그림 안쪽에만 보여요. 예: 눈동자를 흰자 레이어 바로 위에 두고 켜면 흰자 밖으로 안 나가요.
+        눈동자는 '눈 뜰 때'로, 깊이는 흰자보다 높게 두면 고개를 돌릴 때 시선이 따라가는 느낌이 나요.
+      </p>
+      <label class="check-row">
+        <input v-model="selected.pop" type="checkbox">
+        <span><b>깜빡일 때 통통 (눈동자용)</b></span>
+      </label>
+      <p class="desc">켜면 눈을 감을 때 같이 눌렸다가, 뜰 때 탄성 있는 공처럼 살짝 길쭉하게 튀었다가 돌아와요. 미리보기의 '깜빡여 보기'로 확인할 수 있어요.</p>
       <p class="desc">
         표정 번호(숫자키)마다 보일지 골라요. 예를 들어 '웃는 눈' 레이어를 2번에서만 켜 두면, 라이브 중 2를 누를 때만 나타나요.
       </p>
@@ -218,6 +231,14 @@ function toggleAll() {
 .row select {
   width: auto;
   flex: 1;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  cursor: pointer;
 }
 
 .chips {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, GripVertical, Plus, Trash2, TriangleAlert } from '@lucide/vue'
+import { ChevronDown, ChevronUp, Copy, CornerLeftDown, Eye, EyeOff, GripVertical, Plus, Trash2, TriangleAlert } from '@lucide/vue'
 import { PRESETS, SHOW_OPTIONS, type Layer, type PresetKey } from '~/lib/model'
 
 const ed = useEditor()
@@ -12,6 +12,7 @@ function badges(l: Layer) {
   const out: [string, string][] = []
   if (imageErrors.has(l.id)) out.push(['이미지 오류', 'err'])
   else if (!l.src.value) out.push(['이미지 없음', ''])
+  if (l.clip) out.push(['클리핑', 'clip'])
   if (l.part == 'body') out.push(['몸', ''])
   if (l.show != 'always') out.push([showLabel[l.show]!, ''])
   if (l.hair.enabled && l.part != 'body') out.push(['머리카락', 'hair'])
@@ -54,7 +55,7 @@ function onDragEnd() {
         v-for="(l, i) in model.layers"
         :key="l.id"
         draggable="true"
-        :class="{ selected: l.id == selectedId, 'hidden-layer': !l.visible, 'drag-over': overId == l.id && dragId != l.id }"
+        :class="{ selected: l.id == selectedId, 'hidden-layer': !l.visible, 'drag-over': overId == l.id && dragId != l.id, clipped: l.clip }"
         @click="ed.selectLayer(l.id)"
         @dragstart="dragId = l.id"
         @dragover.prevent="overId = l.id"
@@ -62,6 +63,7 @@ function onDragEnd() {
         @dragend="onDragEnd"
       >
         <GripVertical class="grip" :size="16" aria-label="끌어서 순서 변경" />
+        <CornerLeftDown v-if="l.clip" class="clip-mark" :size="15" aria-label="아래 레이어에 맞춰 잘림" />
         <LayerImage :layer="l" class="thumb" />
         <span class="name">
           {{ l.name || '(이름 없음)' }}
@@ -124,6 +126,20 @@ li.selected {
 li.hidden-layer .name,
 li.hidden-layer .thumb {
   opacity: 0.35;
+}
+
+li.clipped {
+  margin-left: 18px;
+}
+
+.clip-mark {
+  color: var(--main-dark);
+  flex: none;
+}
+
+.badge.clip {
+  background: #e6f6ff;
+  color: var(--main-dark);
 }
 
 li.drag-over {

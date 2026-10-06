@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { resolveSrc, type Layer } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
-import { Head, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
+import { Blinker, Head, pupilPop, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
 import type { Handle, MotionMode } from '~/composables/useEditor'
 
 const ed = useEditor()
@@ -20,6 +20,12 @@ const MODES: [MotionMode, string, string][] = [
 ]
 
 const wander = new Wander()
+const blinker = new Blinker()
+
+function blinkOnce() {
+  preview.eyesClosed = false
+  blinker.trigger(performance.now())
+}
 
 function setMode(mode: MotionMode) {
   preview.mode = mode
@@ -30,7 +36,13 @@ function setMode(mode: MotionMode) {
 // ---- 핸들 (얼굴 중심, 얼굴 크기, 머리카락 고정선) ----
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
-const CURSOR: Record<Handle, string> = { center: 'move', radius: 'nwse-resize', anchor: 'ns-resize' }
+const CURSOR: Record<Handle, string> = { center: 'move', radius: 'nwse-resize', anchor: 'ns-resize', eyes: 'ns-resize', eyesSize: 'ns-resize' }
+
+// 눈 레이어를 골랐을 때 깜빡임 영역을 보여준다
+function eyeLayer(): Layer | null {
+  const l = selected.value
+  return l && (l.show == 'eyesOpen' || l.show == 'eyesClosed') ? l : null
+}
 
 function anchorLayer(): Layer | null {
   const l = selected.value
@@ -51,6 +63,11 @@ function hitTest(p: { x: number; y: number }): Handle | null {
   if (Math.abs(d - c.r * S) < 8) return 'radius'
   const l = anchorLayer()
   if (l && Math.abs(p.y - (y + l.hair.anchorY * S)) < 8 && p.x > x && p.x < x + S) return 'anchor'
+  if (eyeLayer() && p.x > x && p.x < x + S) {
+    const e = model.value.eyes
+    if (Math.abs(p.y - (y + e.y * S)) < 8) return 'eyes'
+    if (Math.abs(Math.abs(p.y - (y + e.y * S)) - e.h * S) < 6) return 'eyesSize'
+  }
   return null
 }
 
@@ -76,6 +93,10 @@ function onPointerMove(e: PointerEvent) {
     } else if (preview.drag == 'anchor') {
       const l = anchorLayer()
       if (l) l.hair.anchorY = Math.round(clamp(my, 0, 0.95) * 100) / 100
+    } else if (preview.drag == 'eyes') {
+      model.value.eyes.y = round(clamp(my, 0, 1))
+    } else if (preview.drag == 'eyesSize') {
+      model.value.eyes.h = round(clamp(Math.abs(my - model.value.eyes.y), 0.01, 0.2))
     }
     return
   }
@@ -130,6 +151,31 @@ function drawOverlay() {
     ctx.setLineDash([])
     ctx.fillStyle = '#ff6b8a'
     ctx.fillText(`머리카락 고정선 (${l.name})`, x + 6, ay - 6)
+  }
+
+  // 깜빡임 때 눌리는 눈 영역
+  if (eyeLayer()) {
+    const e = toRaw(model.value).eyes
+    const ey = y + e.y * S, eh = e.h * S
+    ctx.fillStyle = 'rgba(46, 204, 113, 0.08)'
+    ctx.fillRect(x, ey - eh, S, eh * 2)
+    ctx.strokeStyle = '#2ecc71'
+    ctx.setLineDash([6, 5])
+    ctx.lineWidth = active('eyesSize') ? 2.5 : 1.5
+    ctx.beginPath()
+    ctx.moveTo(x, ey - eh)
+    ctx.lineTo(x + S, ey - eh)
+    ctx.moveTo(x, ey + eh)
+    ctx.lineTo(x + S, ey + eh)
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.lineWidth = active('eyes') ? 3 : 2
+    ctx.beginPath()
+    ctx.moveTo(x, ey)
+    ctx.lineTo(x + S, ey)
+    ctx.stroke()
+    ctx.fillStyle = '#27ae60'
+    ctx.fillText('눈 깜빡임 영역 (이 띠 안쪽만 눌려요)', x + 6, ey - eh - 6)
   }
 
   // 얼굴 중심과 크기
@@ -190,6 +236,9 @@ onMounted(() => {
       breath: b,
       expression: preview.expression,
       eyesClosed: preview.eyesClosed,
+      blink: preview.eyesClosed ? 1 : blinker.update(now, false),
+      pop: pupilPop(blinker, now),
+      eyes: m.eyes,
       mouthOpen: preview.mouthOpen,
       hair: hair.update(dt, m.layers, h, now / 1000, b.hairLag),
       focusId: preview.focus ? selected.value?.id : null,
@@ -249,11 +298,12 @@ onBeforeUnmount(() => {
     <div class="toolbar">
       <span class="label">상태</span>
       <button class="toggle" :class="{ on: preview.eyesClosed }" @click="preview.eyesClosed = !preview.eyesClosed">눈 감기</button>
+      <button class="toggle" title="한 번 깜빡여요. 라이브에선 2~6초마다 불규칙하게 깜빡여요." @click="blinkOnce">깜빡여 보기</button>
       <button class="toggle" :class="{ on: preview.mouthOpen }" @click="preview.mouthOpen = !preview.mouthOpen">입 열기</button>
       <span class="tip">라이브에선 눈은 자동으로 깜빡이고, 입은 마이크 소리에 맞춰 움직여요.</span>
     </div>
     <p class="tip">
-      <b>+</b> 얼굴 중심 · <b>점선 원</b> 얼굴 크기 · <b>분홍 점선</b> 머리카락 고정선 — 모두 끌어서 옮길 수 있어요.
+      <b>+</b> 얼굴 중심 · <b>점선 원</b> 얼굴 크기 · <b>분홍 점선</b> 머리카락 고정선 · <b>초록 띠</b> 눈 깜빡임 영역 — 모두 끌어서 옮길 수 있어요.
     </p>
   </section>
 </template>

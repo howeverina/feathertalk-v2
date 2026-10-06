@@ -142,6 +142,53 @@ export function breath(t: number, strength: number, center: Model['center']): Br
   return { bodyStretch: e, headBob: (neck - 1) * e, hairLag: Math.sin(phase - 0.9) * s }
 }
 
+// 눈동자 통통 세로 배율 (1이면 그대로): 감길 때 눌렸다가, 뜰 때 탄성 있는 공처럼 튀어 돌아온다
+export function pupilPop(blinker: Blinker, now: number): number {
+  if (blinker.start >= 0) {
+    const t = now - blinker.start
+    if (t < BLINK_CLOSE + BLINK_HOLD) return 1 - 0.3 * Math.min(1, t / BLINK_CLOSE)
+  }
+  const s = (now - blinker.openAt) / 1000
+  if (s < 0 || s > 0.8) return 1
+  return 1 - 0.3 * Math.exp(-s / 0.12) * Math.cos(2 * Math.PI * s / 0.26)
+}
+
+// 눈 깜빡임: 2~6초 사이 불규칙하게, 가끔 두 번 연속. 0(뜸) ~ 1(감음)을 돌려준다.
+const BLINK_CLOSE = 70, BLINK_HOLD = 40, BLINK_OPEN = 110 // ms
+export class Blinker {
+  next = 1500 + Math.random() * 2000
+  start = -1
+  twice = false
+  openAt = -Infinity // 마지막으로 눈을 뜨기 시작한 시각 (눈동자 통통용)
+
+  // 지금 바로 한 번 깜빡이기 (편집기 미리보기용)
+  trigger(now: number) {
+    this.start = now
+  }
+
+  // auto가 false면 trigger()로 부른 깜빡임만 한다
+  update(now: number, auto = true): number {
+    if (this.start < 0 && auto && now >= this.next) this.start = now
+    if (this.start < 0) return 0
+    const t = now - this.start
+    if (t < BLINK_CLOSE) return 1 - (1 - t / BLINK_CLOSE) ** 2 // 빠르게 감기
+    if (t < BLINK_CLOSE + BLINK_HOLD) return 1
+    this.openAt = this.start + BLINK_CLOSE + BLINK_HOLD
+    const o = (t - BLINK_CLOSE - BLINK_HOLD) / BLINK_OPEN
+    if (o < 1) return 1 - o * o * (3 - 2 * o) // 천천히 뜨기
+    this.start = -1
+    this.openAt = now - BLINK_OPEN
+    if (!this.twice && Math.random() < 0.15) {
+      this.twice = true
+      this.next = now + 120
+    } else {
+      this.twice = false
+      this.next = now + 2000 + Math.random() * 4000
+    }
+    return 0
+  }
+}
+
 interface Point { x: number; y: number }
 
 // 자동 모션: 보이지 않는 마우스 커서가 랜덤 지점들 사이를 일정한 속도로 천천히 옮겨 다닌다

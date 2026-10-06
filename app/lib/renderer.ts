@@ -1,8 +1,8 @@
 // WebGL 렌더러: 레이어마다 격자(메시)를 휘어서 입체감/볼록·오목/머리카락 흔들림을 표현한다.
-import { isVisible, type FaceState, type Layer, type Model } from './model'
+import { BLINK_SWAP, isVisible, type FaceState, type Layer, type Model } from './model'
 import type { BreathState, HairOutput, HeadState } from './physics'
 
-const GRID = 32
+const GRID = 64 // 눈 깜빡임처럼 좁은 영역도 부드럽게 휘도록 촘촘하게
 
 const VERT = `
 attribute vec2 aPos;
@@ -19,6 +19,8 @@ uniform float uHairOn;
 uniform float uAnchorY;
 uniform vec2 uHairOffset;
 uniform float uHairAngle;
+uniform vec3 uEyeBand;   // 눈 영역 가운데 높이, 반높이, 눌림 정도(1이면 그대로)
+uniform float uPop;      // 눈동자 통통: 눈 높이를 축으로 한 세로 배율 (1이면 그대로)
 varying vec2 vUv;
 
 vec2 rot(vec2 v, float a) {
@@ -29,6 +31,15 @@ vec2 rot(vec2 v, float a) {
 void main() {
   vUv = aPos;
   vec2 m = aPos;
+
+  // 깜빡임: 눈 영역 띠 안쪽만 세로로 누른다 (띠 밖의 코·볼터치는 그대로).
+  // 위 눈꺼풀이 더 많이 내려오도록 띠 가운데보다 살짝 아래로 모은다.
+  if (uEyeBand.z < 0.999) {
+    float c = uEyeBand.x + uEyeBand.y * 0.3;
+    float w = 1.0 - smoothstep(uEyeBand.y, uEyeBand.y * 1.5, abs(m.y - uEyeBand.x));
+    m.y = c + (m.y - c) * mix(1.0, uEyeBand.z, w);
+  }
+  if (uPop != 1.0) m.y = uEyeBand.x + (m.y - uEyeBand.x) * uPop;
 
   // 머리카락: 고정선 아래로 갈수록 크게 휘고 밀린다
   if (uHairOn > 0.5) {
@@ -63,9 +74,12 @@ const FRAG = `
 precision mediump float;
 uniform sampler2D uTex;
 uniform float uAlpha;
+uniform float uAlphaTest; // 0보다 크면 이보다 투명한 곳은 버린다 (클리핑 영역 만들 때)
 varying vec2 vUv;
 void main() {
-  gl_FragColor = texture2D(uTex, vUv) * uAlpha;
+  vec4 c = texture2D(uTex, vUv);
+  if (uAlphaTest > 0.0 && c.a < uAlphaTest) discard;
+  gl_FragColor = c * uAlpha;
 }`
 
 export interface RenderState extends FaceState {
@@ -75,6 +89,8 @@ export interface RenderState extends FaceState {
   breath?: BreathState
   hair?: Map<string, HairOutput>
   focusId?: string | null
+  eyes?: Model['eyes']
+  pop?: number // 눈동자 통통 배율
 }
 
 export interface RendererOptions {
@@ -93,7 +109,7 @@ function compile(gl: WebGLRenderingContext, type: number, src: string) {
 }
 
 export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptions = {}) {
-  const gl = canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: true })
+  const gl = canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: true, stencil: true })
   if (!gl) return null
 
   const prog = gl.createProgram()!
@@ -105,7 +121,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
 
   const u: Record<string, WebGLUniformLocation | null> = {}
   for (const name of ['uRes', 'uRect', 'uCenter', 'uHead', 'uSquash', 'uBreath', 'uIsHead', 'uDepth', 'uCurve',
-    'uHairOn', 'uAnchorY', 'uHairOffset', 'uHairAngle', 'uTex', 'uAlpha']) {
+    'uHairOn', 'uAnchorY', 'uHairOffset', 'uHairAngle', 'uTex', 'uAlpha', 'uAlphaTest', 'uEyeBand', 'uPop']) {
     u[name] = gl.getUniformLocation(prog, name)
   }
 
@@ -246,7 +262,10 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
       resize()
       gl.viewport(0, 0, canvas.width, canvas.height)
       gl.clearColor(0, 0, 0, 0)
-      gl.clear(gl.COLOR_BUFFER_BIT)
+      gl.clearStencil(0)
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
+      gl.disable(gl.STENCIL_TEST)
+      gl.uniform1f(u.uAlphaTest, 0)
       gl.uniform2f(u.uRes, canvas.width, canvas.height)
       gl.uniform3f(u.uRect, ...rect())
       gl.uniform3f(u.uCenter, state.center.x, state.center.y, state.center.r)
@@ -254,9 +273,15 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
       gl.uniform2f(u.uSquash, ...(state.squash || [1, 1] as [number, number]))
       gl.uniform2f(u.uBreath, state.breath ? state.breath.bodyStretch : 0, state.breath ? state.breath.headBob : 0)
 
+      const blink = state.blink ?? (state.eyesClosed ? 1 : 0)
+      const eyes = state.eyes || { y: 0.4, h: 0.05 }
+
       // 목록 위쪽이 앞이므로 뒤에서부터 그린다
       for (let i = layers.length - 1; i >= 0; i--) {
-        const l = layers[i]
+        const l = layers[i]!
+        // 클리핑: 클리핑 안 된 레이어가 기준이 되고, 바로 앞(목록 위)의 클리핑 레이어들은 그 안쪽에만 그린다
+        const isMask = !l.clip && i > 0 && !!layers[i - 1]!.clip
+        if (!l.clip) gl.clear(gl.STENCIL_BUFFER_BIT)
         const t = textures.get(l.id)
         if (!t || !t.ready || !isVisible(l, state)) continue
         const isHead = l.part != 'body'
@@ -268,9 +293,33 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         gl.uniform1f(u.uAnchorY, l.hair.anchorY)
         gl.uniform2f(u.uHairOffset, ...(hair ? hair.offset : [0, 0] as [number, number]))
         gl.uniform1f(u.uHairAngle, hair ? hair.angle : 0)
+        // 뜬 눈은 감은 눈으로 바뀌기 전까지 점점 눌린다
+        const squash = l.show == 'eyesOpen' ? 1 - 0.75 * Math.min(1, blink / BLINK_SWAP) : 1
+        gl.uniform3f(u.uEyeBand, eyes.y, eyes.h, squash)
+        gl.uniform1f(u.uPop, l.pop ? state.pop ?? 1 : 1)
         gl.uniform1f(u.uAlpha, state.focusId && state.focusId != l.id ? 0.25 : 1)
         gl.bindTexture(gl.TEXTURE_2D, t.tex)
+
+        if (l.clip) {
+          gl.enable(gl.STENCIL_TEST)
+          gl.stencilFunc(gl.EQUAL, 1, 0xff)
+          gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
+        }
         gl.drawElements(gl.TRIANGLES, idx.length, gl.UNSIGNED_SHORT, 0)
+        gl.disable(gl.STENCIL_TEST)
+
+        // 기준 레이어의 그림 영역을 스텐실에 기록 (색은 안 그림)
+        if (isMask) {
+          gl.enable(gl.STENCIL_TEST)
+          gl.stencilFunc(gl.ALWAYS, 1, 0xff)
+          gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
+          gl.colorMask(false, false, false, false)
+          gl.uniform1f(u.uAlphaTest, 0.5)
+          gl.drawElements(gl.TRIANGLES, idx.length, gl.UNSIGNED_SHORT, 0)
+          gl.uniform1f(u.uAlphaTest, 0)
+          gl.colorMask(true, true, true, true)
+          gl.disable(gl.STENCIL_TEST)
+        }
       }
     },
 
