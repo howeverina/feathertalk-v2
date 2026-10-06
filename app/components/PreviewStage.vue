@@ -41,7 +41,7 @@ const CURSOR: Record<Handle, string> = { center: 'move', radius: 'nwse-resize', 
 // 눈 레이어를 골랐을 때 깜빡임 영역을 보여준다
 function eyeLayer(): Layer | null {
   const l = selected.value
-  return l && (l.show == 'eyesOpen' || l.show == 'eyesClosed') ? l : null
+  return model.value.eyes.squash && l && (l.show == 'eyesOpen' || l.show == 'eyesClosed') ? l : null
 }
 
 function anchorLayer(): Layer | null {
@@ -303,7 +303,7 @@ onBeforeUnmount(() => {
       <span class="tip">라이브에선 눈은 자동으로 깜빡이고, 입은 마이크 소리에 맞춰 움직여요.</span>
     </div>
     <p class="tip">
-      <b>+</b> 얼굴 중심 · <b>점선 원</b> 얼굴 크기 · <b>분홍 점선</b> 머리카락 고정선 · <b>초록 띠</b> 눈 깜빡임 영역 — 모두 끌어서 옮길 수 있어요.
+      <b>+</b> 얼굴 중심 · <b>점선 원</b> 얼굴 크기 · <b>분홍 점선</b> 머리카락 고정선 · <b>초록 띠</b> 눈 깜빡임 영역(눌림 효과를 켰을 때) — 모두 끌어서 옮길 수 있어요.
     </p>
   </section>
 </template>

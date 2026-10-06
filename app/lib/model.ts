@@ -36,7 +36,7 @@ export interface Model {
   version: 2
   center: { x: number; y: number; r: number }
   rig: { yaw: number; pitch: number; roll: number; bounce: number; breath: number }
-  eyes: { y: number; h: number } // 깜빡임 때 세로로 눌리는 눈 영역 (가운데 높이, 반높이)
+  eyes: { squash: boolean; y: number; h: number } // 깜빡일 때 눈을 눌러 감기는 효과와 그 영역 (가운데 높이, 반높이)
   layers: Layer[]
 }
 
@@ -68,6 +68,8 @@ interface Preset {
   show?: ShowMode
   part?: 'head' | 'body'
   hair?: HairParams
+  clip?: boolean
+  pop?: boolean
 }
 
 // 레이어 추가 메뉴에 나오는 프리셋
@@ -75,6 +77,9 @@ export const PRESETS = {
   bang: { label: '앞머리', name: '앞머리', depth: 30, curve: 40, hair: { enabled: true, anchorY: 0.22, sway: 50, stiffness: 50, bounce: 50 } },
   eyes: { label: '눈 (뜬 눈)', name: '눈', depth: 25, curve: 30, show: 'eyesOpen' },
   eyesClosed: { label: '눈 (감은 눈)', name: '감은 눈', depth: 25, curve: 30, show: 'eyesClosed' },
+  // 흰자 레이어를 고른 채로 추가하면 그 바로 위에 들어가서 흰자 안쪽으로 잘린다
+  pupil: { label: '눈동자', name: '눈동자', depth: 15, curve: 29, show: 'eyesOpen', clip: true, pop: true },
+  nose: { label: '코', name: '코', depth: 19, curve: 46 },
   mouth: { label: '입 (다문 입)', name: '입', depth: 25, curve: 30, show: 'mouthClosed' },
   mouthOpen: { label: '입 (벌린 입)', name: '벌린 입', depth: 25, curve: 30, show: 'mouthOpen' },
   face: { label: '얼굴', name: '얼굴', depth: 0, curve: 40 },
@@ -103,8 +108,8 @@ export function newLayer(presetKey: PresetKey = 'blank', src = ''): Layer {
     depth: p.depth || 0,
     curve: p.curve || 0,
     hair: { ...HAIR_OFF, ...(p.hair || {}) },
-    clip: false,
-    pop: false,
+    clip: p.clip || false,
+    pop: p.pop || false,
   }
 }
 
@@ -138,7 +143,7 @@ function baseModel(): Model {
     version: 2,
     center: { x: 0.5, y: 0.4, r: 0.25 },
     rig: { yaw: 100, pitch: 100, roll: 100, bounce: 50, breath: 50 },
-    eyes: { y: 0.4, h: 0.05 },
+    eyes: { squash: false, y: 0.4, h: 0.05 },
     layers: [],
   }
 }

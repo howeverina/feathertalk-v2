@@ -16,11 +16,21 @@ const strength = (v: number) => v + '%'
       v-model="model.center.r" label="얼굴 크기" left="작게" right="크게" :min="0.05" :max="0.6" :step="0.005" :def="0.25" :format="percent"
       desc="볼록/오목이 적용되는 범위예요. 점선 원이 얼굴을 감싸도록 맞춰 주세요."
     />
-    <RangeField
-      v-model="model.eyes.y" label="눈 높이 (깜빡임)" left="위" right="아래" :min="0" :max="1" :step="0.005" :def="0.4" :format="percent"
-      desc="깜빡일 때 이 높이의 띠 안쪽만 눌려서, 같은 그림에 있는 코·볼터치는 그대로 있어요. 눈 레이어를 고르면 미리보기에 초록 띠로 보여요."
-    />
-    <RangeField v-model="model.eyes.h" label="눈 영역 크기" left="좁게" right="넓게" :min="0.01" :max="0.2" :step="0.005" :def="0.05" :format="percent" />
+    <label class="check-row">
+      <input v-model="model.eyes.squash" type="checkbox">
+      <b>깜빡일 때 눈이 눌리며 감기는 효과</b>
+    </label>
+    <p class="desc">
+      끄면 뜬 눈 → 감은 눈 그림이 바로 바뀌어요. 켜면 뜬 눈을 '눈 영역' 띠 안쪽만 눌러 감기는 과정을 보여 줘요.
+      코·볼터치가 눈과 같은 그림에 있으면 띠에 걸리지 않게 맞춰 주세요.
+    </p>
+    <template v-if="model.eyes.squash">
+      <RangeField
+        v-model="model.eyes.y" label="눈 높이" left="위" right="아래" :min="0" :max="1" :step="0.005" :def="0.4" :format="percent"
+        desc="이 높이의 띠 안쪽만 눌려요. 눈 레이어를 고르면 미리보기에 초록 띠로 보이고, 끌어서 옮길 수 있어요."
+      />
+      <RangeField v-model="model.eyes.h" label="눈 영역 크기" left="좁게" right="넓게" :min="0.01" :max="0.2" :step="0.005" :def="0.05" :format="percent" />
+    </template>
     <RangeField v-model="model.rig.yaw" label="좌우 회전 강도" left="0" right="200" :min="0" :max="200" :def="100" :format="strength" />
     <RangeField v-model="model.rig.pitch" label="상하 회전 강도" left="0" right="200" :min="0" :max="200" :def="100" :format="strength" />
     <RangeField v-model="model.rig.roll" label="기울기 강도" left="0" right="200" :min="0" :max="200" :def="100" :format="strength" />
@@ -35,3 +45,13 @@ const strength = (v: number) => v + '%'
     <p class="tip">슬라이더를 더블클릭하면 기본값으로 돌아가요. 모든 설정은 이 브라우저에 자동 저장돼요.</p>
   </section>
 </template>
+
+<style scoped>
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  cursor: pointer;
+}
+</style>

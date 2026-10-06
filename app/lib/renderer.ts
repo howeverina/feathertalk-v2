@@ -274,7 +274,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
       gl.uniform2f(u.uBreath, state.breath ? state.breath.bodyStretch : 0, state.breath ? state.breath.headBob : 0)
 
       const blink = state.blink ?? (state.eyesClosed ? 1 : 0)
-      const eyes = state.eyes || { y: 0.4, h: 0.05 }
+      const eyes = state.eyes || { squash: false, y: 0.4, h: 0.05 }
 
       // 목록 위쪽이 앞이므로 뒤에서부터 그린다
       for (let i = layers.length - 1; i >= 0; i--) {
@@ -294,7 +294,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         gl.uniform2f(u.uHairOffset, ...(hair ? hair.offset : [0, 0] as [number, number]))
         gl.uniform1f(u.uHairAngle, hair ? hair.angle : 0)
         // 뜬 눈은 감은 눈으로 바뀌기 전까지 점점 눌린다
-        const squash = l.show == 'eyesOpen' ? 1 - 0.75 * Math.min(1, blink / BLINK_SWAP) : 1
+        const squash = eyes.squash && l.show == 'eyesOpen' ? 1 - 0.75 * Math.min(1, blink / BLINK_SWAP) : 1
         gl.uniform3f(u.uEyeBand, eyes.y, eyes.h, squash)
         gl.uniform1f(u.uPop, l.pop ? state.pop ?? 1 : 1)
         gl.uniform1f(u.uAlpha, state.focusId && state.focusId != l.id ? 0.25 : 1)
