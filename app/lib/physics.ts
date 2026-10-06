@@ -142,26 +142,35 @@ export function breath(t: number, strength: number, center: Model['center']): Br
   return { bodyStretch: e, headBob: (neck - 1) * e, hairLag: Math.sin(phase - 0.9) * s }
 }
 
-// 입 벌림 정도 (0~1). 빨리 벌리고 조금 천천히 다물어서 말하는 느낌을 낸다.
+// 입이 열리고 닫히는 순간의 움직임 (0 다문 입 ~ 1 다 벌림).
+// 열릴 땐 작은 크기에서 쑥 커지고, 닫힐 땐 작아진 뒤 다문 입으로 바뀐다.
+const MOUTH_OPEN_TIME = 0.07, MOUTH_CLOSE_TIME = 0.05 // 초
 export class Mouth {
   amount = 0
 
-  // target: 0~1 (0이면 다문 입)
-  update(dt: number, target: number): number {
-    const tau = target > this.amount ? 0.04 : 0.09 // 초
-    this.amount += (target - this.amount) * (1 - Math.exp(-Math.min(dt, 0.1) / tau))
+  update(dt: number, open: boolean): number {
+    const d = Math.min(dt, 0.1)
+    this.amount = open
+      ? Math.min(1, this.amount + d / MOUTH_OPEN_TIME)
+      : Math.max(0, this.amount - d / MOUTH_CLOSE_TIME)
     return this.amount
   }
 
   get open() {
-    return this.amount > 0.05
+    return this.amount > 0
+  }
+
+  // 화면에 쓸 값: 빨리 커졌다가 끝에서 부드럽게 멈추도록
+  get eased() {
+    return 1 - (1 - this.amount) ** 2
   }
 }
 
-// 마이크 소리 크기 → 입 벌림 목표. 민감도(thres)를 넘으면 35%부터 벌리기 시작해 소리가 클수록 크게.
-export function voiceToMouth(volume: number, thres: number): number {
-  if (volume < thres) return 0
-  return 0.35 + 0.65 * Math.min(1, (volume - thres) / 30)
+// 렌더러에 넘길 입 상태. animate가 꺼져 있으면 그림만 바로 바뀐다.
+export function mouthState(mouth: Mouth, dt: number, open: boolean, animate: boolean) {
+  if (!animate) return { mouthOpen: open }
+  mouth.update(dt, open)
+  return { mouthOpen: mouth.open, mouthAmount: mouth.eased }
 }
 
 // 눈동자 통통 세로 배율 (1이면 그대로): 감길 때 눌렸다가, 뜰 때 탄성 있는 공처럼 튀어 돌아온다

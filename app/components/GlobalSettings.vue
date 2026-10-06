@@ -17,12 +17,13 @@ const strength = (v: number) => v + '%'
       desc="볼록/오목이 적용되는 범위예요. 점선 원이 얼굴을 감싸도록 맞춰 주세요."
     />
     <label class="check-row">
-      <input v-model="model.mouth.follow" type="checkbox">
-      <b>목소리 크기만큼 입 벌리기</b>
+      <input v-model="model.mouth.animate" type="checkbox">
+      <b>입이 열리고 닫힐 때 움직임</b>
     </label>
     <p class="desc">
-      작게 말하면 조금, 크게 말하면 크게 벌어지고 부드럽게 다물어요. 벌린 입 그림의 위치는 자동으로 찾아서
-      입의 가운데를 축으로 벌어지고, 작게 벌릴 때는 폭도 살짝 좁아져요. 끄면 일정한 간격으로 뻐끔뻐끔해요. 미리보기의 '말해 보기'로 확인할 수 있어요.
+      켜면 입이 열릴 때 벌린 입이 작은 크기에서 쑥 커지고, 닫힐 때 작아졌다가 다문 입으로 바뀌어요.
+      벌린 입 그림의 위치는 자동으로 찾아서 입의 가운데를 축으로 움직여요. 끄면 그림만 바로 바뀌어요.
+      미리보기의 '말해 보기'로 확인할 수 있어요.
     </p>
     <label class="check-row">
       <input v-model="model.eyes.squash" type="checkbox">
