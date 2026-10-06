@@ -142,6 +142,28 @@ export function breath(t: number, strength: number, center: Model['center']): Br
   return { bodyStretch: e, headBob: (neck - 1) * e, hairLag: Math.sin(phase - 0.9) * s }
 }
 
+// 입 벌림 정도 (0~1). 빨리 벌리고 조금 천천히 다물어서 말하는 느낌을 낸다.
+export class Mouth {
+  amount = 0
+
+  // target: 0~1 (0이면 다문 입)
+  update(dt: number, target: number): number {
+    const tau = target > this.amount ? 0.04 : 0.09 // 초
+    this.amount += (target - this.amount) * (1 - Math.exp(-Math.min(dt, 0.1) / tau))
+    return this.amount
+  }
+
+  get open() {
+    return this.amount > 0.05
+  }
+}
+
+// 마이크 소리 크기 → 입 벌림 목표. 민감도(thres)를 넘으면 35%부터 벌리기 시작해 소리가 클수록 크게.
+export function voiceToMouth(volume: number, thres: number): number {
+  if (volume < thres) return 0
+  return 0.35 + 0.65 * Math.min(1, (volume - thres) / 30)
+}
+
 // 눈동자 통통 세로 배율 (1이면 그대로): 감길 때 눌렸다가, 뜰 때 탄성 있는 공처럼 튀어 돌아온다
 export function pupilPop(blinker: Blinker, now: number): number {
   if (blinker.start >= 0) {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { resolveSrc, type Layer } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
-import { Blinker, Head, pupilPop, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
+import { Blinker, Head, Mouth, pupilPop, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
 import type { Handle, MotionMode } from '~/composables/useEditor'
 
 const ed = useEditor()
@@ -21,6 +21,21 @@ const MODES: [MotionMode, string, string][] = [
 
 const wander = new Wander()
 const blinker = new Blinker()
+const mouth = new Mouth()
+let talkUntil = 0
+
+// 마이크 없이 말하는 모습 미리보기: 2.5초 동안 음절처럼 벌렸다 다물었다
+function talkOnce() {
+  preview.mouthOpen = false
+  talkUntil = performance.now() + 2500
+}
+
+function fakeVoice(now: number): number {
+  if (now > talkUntil) return 0
+  const t = now / 1000
+  const syllable = Math.sin(t * 11) * 0.5 + 0.5
+  return syllable < 0.25 ? 0 : 0.35 + 0.65 * syllable * (0.6 + 0.4 * Math.sin(t * 2.3))
+}
 
 function blinkOnce() {
   preview.eyesClosed = false
@@ -239,7 +254,12 @@ onMounted(() => {
       blink: preview.eyesClosed ? 1 : blinker.update(now, false),
       pop: pupilPop(blinker, now),
       eyes: m.eyes,
-      mouthOpen: preview.mouthOpen,
+      ...(m.mouth.follow
+        ? (() => {
+            const a = mouth.update(dt, preview.mouthOpen ? 1 : fakeVoice(now))
+            return { mouthAmount: a, mouthOpen: mouth.open }
+          })()
+        : { mouthOpen: preview.mouthOpen || (now < talkUntil && now % 400 >= 200) }),
       hair: hair.update(dt, m.layers, h, now / 1000, b.hairLag),
       focusId: preview.focus ? selected.value?.id : null,
     })
@@ -300,6 +320,7 @@ onBeforeUnmount(() => {
       <button class="toggle" :class="{ on: preview.eyesClosed }" @click="preview.eyesClosed = !preview.eyesClosed">눈 감기</button>
       <button class="toggle" title="한 번 깜빡여요. 라이브에선 2~6초마다 불규칙하게 깜빡여요." @click="blinkOnce">깜빡여 보기</button>
       <button class="toggle" :class="{ on: preview.mouthOpen }" @click="preview.mouthOpen = !preview.mouthOpen">입 열기</button>
+      <button class="toggle" title="마이크 없이 2.5초 동안 말하는 모습을 보여줘요" @click="talkOnce">말해 보기</button>
       <span class="tip">라이브에선 눈은 자동으로 깜빡이고, 입은 마이크 소리에 맞춰 움직여요.</span>
     </div>
     <p class="tip">

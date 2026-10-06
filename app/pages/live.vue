@@ -3,7 +3,7 @@
 import { ArrowLeft, Camera, Crosshair, Mic } from '@lucide/vue'
 import { loadModel, resolveSrc } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
-import { Blinker, Head, pupilPop, HairSystem, Wander, breath, cameraToTarget, headTarget, lookAt } from '~/lib/physics'
+import { Blinker, Head, Mouth, pupilPop, voiceToMouth, HairSystem, Wander, breath, cameraToTarget, headTarget, lookAt } from '~/lib/physics'
 import { WebcamTracker, type WebcamStatus } from '~/lib/webcam'
 
 // ---- 설정 (기존과 같은 localStorage 키) ----
@@ -163,6 +163,7 @@ onMounted(() => {
   const head = new Head()
   const hair = new HairSystem()
   const blinker = new Blinker()
+  const mouth = new Mouth()
   let last = performance.now()
 
   function frame(now: number) {
@@ -200,7 +201,10 @@ onMounted(() => {
       blink: blinker.update(now),
       pop: pupilPop(blinker, now),
       eyes: model.eyes,
-      mouthOpen: isTalking && now % 400 >= 200,
+      // 목소리 크기만큼 입 벌리기 (끄면 예전처럼 일정한 간격으로 뻐끔뻐끔)
+      ...(model.mouth.follow
+        ? { mouthAmount: mouth.update(dt, voiceToMouth(volume, thres.value)), mouthOpen: mouth.open }
+        : { mouthOpen: isTalking && now % 400 >= 200 }),
       hair: hair.update(dt, model.layers, h, now / 1000, b.hairLag),
     })
   }

@@ -37,6 +37,7 @@ export interface Model {
   center: { x: number; y: number; r: number }
   rig: { yaw: number; pitch: number; roll: number; bounce: number; breath: number }
   eyes: { squash: boolean; y: number; h: number } // 깜빡일 때 눈을 눌러 감기는 효과와 그 영역 (가운데 높이, 반높이)
+  mouth: { follow: boolean } // 목소리 크기만큼 입 벌리기 (끄면 일정한 간격으로 뻐끔뻐끔)
   layers: Layer[]
 }
 
@@ -144,6 +145,7 @@ function baseModel(): Model {
     center: { x: 0.5, y: 0.4, r: 0.25 },
     rig: { yaw: 100, pitch: 100, roll: 100, bounce: 50, breath: 50 },
     eyes: { squash: false, y: 0.4, h: 0.05 },
+    mouth: { follow: true },
     layers: [],
   }
 }
@@ -186,6 +188,7 @@ export function normalizeModel(raw: any): Model {
   m.center = { ...base.center, ...raw.center }
   m.rig = { ...base.rig, ...raw.rig }
   m.eyes = { ...base.eyes, ...raw.eyes }
+  m.mouth = { ...base.mouth, ...raw.mouth }
   m.layers = (raw.layers || []).map((l: any) => {
     const d = newLayer('blank')
     const layer: Layer = {
