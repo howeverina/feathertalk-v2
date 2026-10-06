@@ -21,7 +21,7 @@ uniform vec2 uHairOffset;
 uniform float uHairAngle;
 uniform vec3 uEyeBand;   // 눈 영역 가운데 높이, 반높이, 눌림 정도(1이면 그대로)
 uniform float uPop;      // 눈동자 통통: 눈 높이를 축으로 한 세로 배율 (1이면 그대로)
-uniform vec2 uMouth;     // 입 벌림: 입 그림 윗부분 높이, 세로 배율 (1이면 그대로)
+uniform vec4 uMouth;     // 입 벌림: 입 그림 가운데 x, y, 가로 배율, 세로 배율 (1이면 그대로)
 varying vec2 vUv;
 
 vec2 rot(vec2 v, float a) {
@@ -41,8 +41,8 @@ void main() {
     m.y = c + (m.y - c) * mix(1.0, uEyeBand.z, w);
   }
   if (uPop != 1.0) m.y = uEyeBand.x + (m.y - uEyeBand.x) * uPop;
-  // 입: 윗입술은 그대로 두고 아래로 벌어진다
-  if (uMouth.y != 1.0) m.y = uMouth.x + (m.y - uMouth.x) * uMouth.y;
+  // 입: 입 그림의 가운데를 축으로, 작게 벌릴수록 세로는 많이·가로는 조금 줄어든다
+  if (uMouth.w != 1.0) m = uMouth.xy + (m - uMouth.xy) * uMouth.zw;
 
   // 머리카락: 고정선 아래로 갈수록 크게 휘고 밀린다
   if (uHairOn > 0.5) {
@@ -150,26 +150,34 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
   gl.uniform1i(u.uTex, 0)
 
-  const textures = new Map<string, { key: string; tex: WebGLTexture | null; ready: boolean; top: number }>()
+  const textures = new Map<string, { key: string; tex: WebGLTexture | null; ready: boolean; mid: [number, number] }>()
 
-  // 그림에서 불투명한 부분의 맨 위 높이 (0~1). 입을 벌릴 때 윗입술 기준으로 쓴다.
+  // 그림에서 불투명한 부분의 가운데 (0~1). 입을 벌릴 때 축으로 쓴다.
   // 작게 줄여서 CPU 캔버스로 한 번만 계산한다.
   let probe: CanvasRenderingContext2D | null = null
-  function opaqueTop(img: HTMLImageElement): number {
+  function opaqueMid(img: HTMLImageElement): [number, number] {
     const N = 128
     if (!probe) {
       const c = document.createElement('canvas')
       c.width = c.height = N
       probe = c.getContext('2d', { willReadFrequently: true })
     }
-    if (!probe) return 0
+    if (!probe) return [0.5, 0.5]
     probe.clearRect(0, 0, N, N)
     probe.drawImage(img, 0, 0, N, N)
     const d = probe.getImageData(0, 0, N, N).data
+    let x0 = N, y0 = N, x1 = -1, y1 = -1
     for (let y = 0; y < N; y++) {
-      for (let x = 0; x < N; x++) if (d[(y * N + x) * 4 + 3]! > 40) return y / N
+      for (let x = 0; x < N; x++) {
+        if (d[(y * N + x) * 4 + 3]! > 40) {
+          if (x < x0) x0 = x
+          if (x > x1) x1 = x
+          if (y < y0) y0 = y
+          y1 = y
+        }
+      }
     }
-    return 0
+    return x1 < 0 ? [0.5, 0.5] : [(x0 + x1 + 1) / 2 / N, (y0 + y1 + 1) / 2 / N]
   }
   let layers: Layer[] = []
 
@@ -203,7 +211,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
     const cur = textures.get(layer.id)
     if (cur && cur.key == key) return
     if (cur && cur.tex) gl.deleteTexture(cur.tex)
-    const entry = { key, tex: null as WebGLTexture | null, ready: false, top: 0 }
+    const entry = { key, tex: null as WebGLTexture | null, ready: false, mid: [0.5, 0.5] as [number, number] }
     textures.set(layer.id, entry)
     if (!layer.src.value) return
     resolveSrc(layer).then(url => {
@@ -212,7 +220,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
       if (!url.startsWith('blob:') && !url.startsWith('data:')) img.crossOrigin = 'anonymous'
       img.onload = async () => {
         try {
-          entry.top = opaqueTop(img)
+          entry.mid = opaqueMid(img)
         } catch (e) {}
         const source = await fitImage(img)
         if (textures.get(layer.id) !== entry) {
@@ -324,8 +332,8 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         const squash = eyes.squash && l.show == 'eyesOpen' ? 1 - 0.75 * Math.min(1, blink / BLINK_SWAP) : 1
         gl.uniform3f(u.uEyeBand, eyes.y, eyes.h, squash)
         gl.uniform1f(u.uPop, l.pop ? state.pop ?? 1 : 1)
-        const mouth = l.show == 'mouthOpen' && state.mouthAmount !== undefined ? 0.5 + 0.5 * state.mouthAmount : 1
-        gl.uniform2f(u.uMouth, t.top, mouth)
+        const a = l.show == 'mouthOpen' && state.mouthAmount !== undefined ? state.mouthAmount : 1
+        gl.uniform4f(u.uMouth, t.mid[0], t.mid[1], 0.8 + 0.2 * a, 0.5 + 0.5 * a)
         gl.uniform1f(u.uAlpha, state.focusId && state.focusId != l.id ? 0.25 : 1)
         gl.bindTexture(gl.TEXTURE_2D, t.tex)
 
