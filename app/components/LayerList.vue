@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronUp, Eye, EyeOff, GripVertical, Plus, Trash2, TriangleAlert } from '@lucide/vue'
+import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, GripVertical, Plus, Trash2, TriangleAlert } from '@lucide/vue'
 import { PRESETS, SHOW_OPTIONS, type Layer, type PresetKey } from '~/lib/model'
 
 const ed = useEditor()
-const { model, selectedId, imageErrors } = ed
+const { model, selectedId, selected, imageErrors } = ed
 const menuOpen = ref(false)
 const presets = Object.entries(PRESETS) as [PresetKey, (typeof PRESETS)[PresetKey]][]
 const showLabel = Object.fromEntries(SHOW_OPTIONS)
@@ -76,7 +76,17 @@ function onDragEnd() {
         <button class="icon" title="삭제" @click.stop="remove(l)"><Trash2 :size="17" /></button>
       </li>
     </ul>
-    <button class="primary" @click="menuOpen = !menuOpen"><Plus :size="16" /> 레이어 추가</button>
+    <div class="actions">
+      <button class="primary" @click="menuOpen = !menuOpen"><Plus :size="16" /> 레이어 추가</button>
+      <button
+        class="primary secondary"
+        :disabled="!selected"
+        :title="selected ? `'${selected.name}' 레이어를 이미지·설정까지 그대로 복제해요` : '복제할 레이어를 먼저 골라 주세요'"
+        @click="ed.duplicateSelected()"
+      >
+        <Copy :size="15" /> 복제
+      </button>
+    </div>
     <div v-if="menuOpen" class="add-menu">
       <button v-for="[key, p] in presets" :key="key" @click="add(key)">{{ p.label }}</button>
     </div>
@@ -180,6 +190,24 @@ li.drag-over {
 
 .icon:hover {
   background: #eef2f5;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+
+.actions .secondary {
+  width: auto;
+  flex: none;
+  background: white;
+  color: var(--main-dark);
+  border: 1px solid var(--main);
+}
+
+.actions .secondary:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .add-menu {

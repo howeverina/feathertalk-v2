@@ -1,6 +1,6 @@
 // 편집기 전체가 함께 쓰는 상태 (모델, 선택한 레이어, 미리보기 상태)
 import {
-  loadModel, saveModel, newLayer, defaultModel, cleanupFiles, putFile, exportJSON, importJSON,
+  loadModel, saveModel, newLayer, duplicateLayer, defaultModel, cleanupFiles, putFile, exportJSON, importJSON,
   type Layer, type LayerSource, type Model, type PresetKey,
 } from '~/lib/model'
 
@@ -75,6 +75,16 @@ function createEditor() {
     selectLayer(l.id)
   }
 
+  // 선택한 레이어를 복제해서 원본 바로 앞에 넣는다
+  function duplicateSelected() {
+    const src = selected.value
+    if (!src) return
+    const layers = model.value.layers
+    const copy = duplicateLayer(toRaw(src))
+    layers.splice(layers.findIndex(l => l.id == src.id), 0, copy)
+    selectLayer(copy.id)
+  }
+
   function removeLayer(id: string) {
     const layers = model.value.layers
     const i = layers.findIndex(l => l.id == id)
@@ -137,7 +147,7 @@ function createEditor() {
 
   return {
     model, selectedId, selected, imageErrors, preview,
-    ensureVisible, selectLayer, addLayer, removeLayer, moveLayer, setSource, uploadFile,
+    ensureVisible, selectLayer, addLayer, duplicateSelected, removeLayer, moveLayer, setSource, uploadFile,
     reset, exportBackup, importBackup,
   }
 }

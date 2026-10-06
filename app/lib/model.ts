@@ -99,6 +99,14 @@ export function newLayer(presetKey: PresetKey = 'blank', src = ''): Layer {
   }
 }
 
+// 레이어 복제: 이미지와 설정을 그대로 복사하고 id만 새로
+export function duplicateLayer(l: Layer): Layer {
+  const copy: Layer = JSON.parse(JSON.stringify(l))
+  copy.id = makeId()
+  copy.name = l.name + ' 복사본'
+  return copy
+}
+
 // 예전에 저장된 상대 경로(assets/…, ../assets/…)를 사이트 기준 절대 경로로
 function fixAssetPath(v: string) {
   return v.replace(/^(\.\.\/|\.\/)?assets\//, '/assets/')
