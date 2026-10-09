@@ -53,7 +53,8 @@ export class WebcamTracker {
   private timer: ReturnType<typeof setInterval> | undefined
   private raw: FacePose | null = null
   private openBase = 0 // 평소 뜬 눈의 값 (사람마다 달라서 스스로 학습)
-  eyeClose = 0 // 0(뜸) ~ 1(감음)
+  closed = false // 확실히 감고 있는 상태일 때만 true
+  private closedCount = 0
   private lastSeen = -Infinity
   private running = false
 
@@ -123,8 +124,12 @@ export class WebcamTracker {
       // 뜬 눈 기준값: 더 크게 뜨면 빠르게 따라 올라가고, 평소엔 아주 천천히 내려온다
       this.openBase = o > this.openBase ? this.openBase + (o - this.openBase) * 0.3 : this.openBase * 0.999
       this.openBase = Math.max(this.openBase, 0.15)
-      // 기준의 85% 이상이면 뜸, 55% 이하면 감음 (감은 눈 그림으로 바뀌는 건 약 58%부터)
-      this.eyeClose = Math.max(0, Math.min(1, (0.85 - o / this.openBase) / 0.3))
+      // 확실히 감았을 때만 감음: 기준의 55% 아래로 연속 2번 내려가면 감음, 70% 위로 올라오면 뜸.
+      // 기준을 둘로 나눠서 애매한 값에 눈이 깜빡거리지 않게 한다.
+      const r = o / this.openBase
+      this.closedCount = r < 0.55 ? this.closedCount + 1 : 0
+      if (this.closedCount >= 2) this.closed = true
+      else if (r > 0.7) this.closed = false
     }
     if (m) {
       const p = poseFromMatrix(m.data)
@@ -144,9 +149,9 @@ export class WebcamTracker {
     }
   }
 
-  // 눈 감은 정도 (0~1). 얼굴을 놓쳤으면 null.
-  eyes(): number | null {
-    return this.status == 'tracking' && this.raw ? this.eyeClose : null
+  // 눈을 감고 있는지. 얼굴을 놓쳤으면 null.
+  eyesClosed(): boolean | null {
+    return this.status == 'tracking' && this.raw ? this.closed : null
   }
 
   // 지금 자세를 정면으로
@@ -177,7 +182,8 @@ export class WebcamTracker {
     this.video = null
     this.raw = null
     this.openBase = 0
-    this.eyeClose = 0
+    this.closed = false
+    this.closedCount = 0
     if (this.status != 'error') this.setStatus('off')
   }
 }

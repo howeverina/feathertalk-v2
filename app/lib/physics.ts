@@ -173,6 +173,23 @@ export function mouthState(mouth: Mouth, dt: number, open: boolean, animate: boo
   return { mouthOpen: mouth.open, mouthAmount: mouth.eased }
 }
 
+// 웹캠으로 감음/뜸이 바뀌면 자동 깜빡임과 같은 속도로 감고 뜬다 (0 뜸 ~ 1 감음)
+export class EyeFollow {
+  value = 0
+  private wasClosed = false
+
+  // blinker를 넘기면 눈을 다시 뜰 때 눈동자 통통도 나오게 한다
+  update(dt: number, now: number, closed: boolean, blinker?: Blinker): number {
+    const d = Math.min(dt, 0.1) * 1000
+    this.value = closed
+      ? Math.min(1, this.value + d / BLINK_CLOSE)
+      : Math.max(0, this.value - d / BLINK_OPEN)
+    if (this.wasClosed && !closed && blinker) blinker.openAt = now
+    this.wasClosed = closed
+    return closed ? 1 - (1 - this.value) ** 2 : this.value * this.value * (3 - 2 * this.value)
+  }
+}
+
 // 눈동자 통통 세로 배율 (1이면 그대로): 감길 때 눌렸다가, 뜰 때 탄성 있는 공처럼 튀어 돌아온다
 export function pupilPop(blinker: Blinker, now: number): number {
   if (blinker.start >= 0) {
