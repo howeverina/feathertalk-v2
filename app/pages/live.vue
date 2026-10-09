@@ -97,6 +97,7 @@ tracker.onStatus = s => camStatus.value = s
 try {
   const z = JSON.parse(localStorage.getItem('ftWebcamZero') || 'null')
   if (z) tracker.zero = z
+  tracker.eyeBase = parseFloat(localStorage.getItem('ftWebcamEyeBase') || '0') || 0
 } catch (e) {}
 
 const CAM_STATUS: Record<WebcamStatus, string> = {
@@ -106,7 +107,12 @@ const CAM_STATUS: Record<WebcamStatus, string> = {
   searching: '얼굴을 찾는 중',
   error: '',
 }
-const camStatusText = computed(() => camStatus.value == 'error' ? tracker.error : CAM_STATUS[camStatus.value])
+const eyeCalibrated = ref(tracker.eyeBase > 0)
+const camStatusText = computed(() => {
+  if (camStatus.value == 'error') return tracker.error
+  if (camStatus.value == 'tracking' && camEyes.value && !eyeCalibrated.value) return '정면 맞추기를 누르면 눈 인식 시작'
+  return CAM_STATUS[camStatus.value]
+})
 
 function toggleWebcam() {
   webcamOn.value = !webcamOn.value
@@ -117,6 +123,10 @@ function toggleWebcam() {
 function calibrate() {
   tracker.calibrate()
   localStorage.setItem('ftWebcamZero', JSON.stringify(tracker.zero))
+  if (tracker.eyeBase) {
+    localStorage.setItem('ftWebcamEyeBase', String(tracker.eyeBase))
+    eyeCalibrated.value = true
+  }
 }
 
 // ---- 마이크 (입) ----
@@ -244,7 +254,7 @@ onBeforeUnmount(() => {
         </button>
         <template v-if="webcamOn">
           <span class="cam-status" :class="camStatus">{{ camStatusText }}</span>
-          <button v-if="camStatus == 'tracking'" class="cam-toggle" title="지금 자세를 정면으로 잡아요. 카메라가 모니터 옆이나 위에 있을 때 눌러 주세요." @click="calibrate">
+          <button v-if="camStatus == 'tracking'" class="cam-toggle" title="정면을 보고 눈을 뜬 채로 눌러 주세요. 지금 자세를 정면으로, 지금 눈 뜬 정도를 평소 뜬 눈으로 잡아요." @click="calibrate">
             <Crosshair :size="15" /> 정면 맞추기
           </button>
           <label title="켜면 거울처럼, 내가 왼쪽을 보면 캐릭터도 화면 왼쪽을 봐요"><input v-model="mirror" type="checkbox"> 좌우 반전</label>

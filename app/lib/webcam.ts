@@ -30,7 +30,7 @@ function eyeOpenness(lm: Point3[], w: number, h: number): number {
   return sum / EYES.length
 }
 
-const EYE_HISTORY = 150 // 최근 10초 (초당 15번)
+const EYE_RECENT = 8 // 정면 맞추기 때 평균 낼 최근 기록 (약 0.5초)
 export type WebcamStatus = 'off' | 'loading' | 'tracking' | 'searching' | 'error'
 
 // 얼굴 변환 행렬(열 우선 4x4, 카메라 기준 x 오른쪽 / y 위 / z 카메라 쪽)에서 각도를 뽑는다.
@@ -55,7 +55,8 @@ export class WebcamTracker {
   private landmarker: FaceLandmarker | null = null
   private timer: ReturnType<typeof setInterval> | undefined
   private raw: FacePose | null = null
-  private eyeHistory: number[] = [] // 정면일 때 잰 눈 뜬 정도 최근 기록 (평소 뜬 눈 기준을 정한다)
+  private eyeRecent: number[] = [] // 최근 눈 뜬 정도 (정면 맞추기 때 기준으로 쓴다)
+  eyeBase = 0 // 평소 뜬 눈 기준. '정면 맞추기'로 정하고, 0이면 아직 안 맞춘 것
   closed = false // 확실히 감고 있는 상태일 때만 true
   private closedCount = 0
   private lastSeen = -Infinity
@@ -142,20 +143,14 @@ export class WebcamTracker {
   }
 
   private updateEyes(o: number) {
-    // 평소 뜬 눈 기준: 고개를 크게 돌리거나 숙였을 때 값은 빼고, 최근 10초 기록 중 위에서 20% 지점.
-    // 한 번 튄 값에 끌려가지 않고, 어긋나도 10초 안에 스스로 돌아온다.
-    const r = this.raw!
-    const frontal = Math.abs(r.yaw - this.zero.yaw) < 0.35 && Math.abs(r.pitch - this.zero.pitch) < 0.35
-    if (frontal) {
-      this.eyeHistory.push(o)
-      if (this.eyeHistory.length > EYE_HISTORY) this.eyeHistory.shift()
-    }
-    if (this.eyeHistory.length < 15) {
+    this.eyeRecent.push(o)
+    if (this.eyeRecent.length > EYE_RECENT) this.eyeRecent.shift()
+    // 기준은 '정면 맞추기'로만 정한다. 아직 안 맞췄으면 눈 인식은 쉰다.
+    const base = this.eyeBase
+    if (!base) {
       this.closed = false
       return
     }
-    const sorted = [...this.eyeHistory].sort((a, b) => a - b)
-    const base = sorted[Math.floor(sorted.length * 0.8)]!
     // 확실히 감았을 때만 감음: 기준의 55% 아래로 연속 2번 내려가면 감음, 70% 위로 올라오면 뜸.
     // 기준을 둘로 나눠서 애매한 값에 눈이 깜빡거리지 않게 한다.
     const ratio = o / base
@@ -164,14 +159,19 @@ export class WebcamTracker {
     else if (ratio > 0.7) this.closed = false
   }
 
-  // 눈을 감고 있는지. 얼굴을 놓쳤으면 null.
+  // 눈을 감고 있는지. 얼굴을 놓쳤거나 아직 정면 맞추기를 안 했으면 null.
   eyesClosed(): boolean | null {
-    return this.status == 'tracking' && this.raw ? this.closed : null
+    return this.status == 'tracking' && this.raw && this.eyeBase ? this.closed : null
   }
 
-  // 지금 자세를 정면으로
+  // 지금 자세를 정면으로, 지금 눈 뜬 정도를 평소 뜬 눈으로 (정면을 보고 눈을 뜬 채로 누른다)
   calibrate() {
     if (this.raw) this.zero = { ...this.raw }
+    if (this.eyeRecent.length) {
+      this.eyeBase = this.eyeRecent.reduce((a, b) => a + b, 0) / this.eyeRecent.length
+      this.closed = false
+      this.closedCount = 0
+    }
   }
 
   // 캐릭터 기준 각도. mirror면 거울처럼 (내가 왼쪽을 보면 캐릭터는 화면 왼쪽을 본다).
@@ -196,7 +196,7 @@ export class WebcamTracker {
     this.video?.remove()
     this.video = null
     this.raw = null
-    this.eyeHistory = []
+    this.eyeRecent = []
     this.closed = false
     this.closedCount = 0
     if (this.status != 'error') this.setStatus('off')
