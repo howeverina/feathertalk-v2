@@ -17,6 +17,7 @@ uniform float uDepth;
 uniform float uCurve;
 uniform float uHairOn;
 uniform float uAnchorY;
+uniform float uHairDir;  // 1: 고정선 아래가 흔들림, -1: 위가 흔들림
 uniform vec2 uHairOffset;
 uniform float uHairAngle;
 uniform vec3 uEyeBand;   // 눈 영역 가운데 높이, 반높이, 눌림 정도(1이면 그대로)
@@ -44,9 +45,12 @@ void main() {
   // 입: 입 그림의 가운데를 축으로, 작게 벌릴수록 세로는 많이·가로는 조금 줄어든다
   if (uMouth.w != 1.0) m = uMouth.xy + (m - uMouth.xy) * uMouth.zw;
 
-  // 머리카락: 고정선 아래로 갈수록 크게 휘고 밀린다
+  // 머리카락/장식: 고정선에서 멀어질수록(아래 또는 위로) 크게 휘고 밀린다
   if (uHairOn > 0.5) {
-    float w = pow(smoothstep(uAnchorY, 1.0, m.y), 1.5);
+    float t = uHairDir > 0.0
+      ? (m.y - uAnchorY) / max(1.0 - uAnchorY, 0.001)
+      : (uAnchorY - m.y) / max(uAnchorY, 0.001);
+    float w = pow(smoothstep(0.0, 1.0, t), 1.5);
     vec2 a = vec2(m.x, uAnchorY);
     m = a + rot(m - a, uHairAngle * w) + uHairOffset * w;
   }
@@ -125,7 +129,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
 
   const u: Record<string, WebGLUniformLocation | null> = {}
   for (const name of ['uRes', 'uRect', 'uCenter', 'uHead', 'uSquash', 'uBreath', 'uIsHead', 'uDepth', 'uCurve',
-    'uHairOn', 'uAnchorY', 'uHairOffset', 'uHairAngle', 'uTex', 'uAlpha', 'uAlphaTest', 'uEyeBand', 'uPop', 'uMouth']) {
+    'uHairOn', 'uAnchorY', 'uHairDir', 'uHairOffset', 'uHairAngle', 'uTex', 'uAlpha', 'uAlphaTest', 'uEyeBand', 'uPop', 'uMouth']) {
     u[name] = gl.getUniformLocation(prog, name)
   }
 
@@ -326,6 +330,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         gl.uniform1f(u.uCurve, l.curve / 100 * 0.4)
         gl.uniform1f(u.uHairOn, hair ? 1 : 0)
         gl.uniform1f(u.uAnchorY, l.hair.anchorY)
+        gl.uniform1f(u.uHairDir, l.hair.dir == 'up' ? -1 : 1)
         gl.uniform2f(u.uHairOffset, ...(hair ? hair.offset : [0, 0] as [number, number]))
         gl.uniform1f(u.uHairAngle, hair ? hair.angle : 0)
         // 뜬 눈은 감은 눈으로 바뀌기 전까지 점점 눌린다

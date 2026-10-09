@@ -15,7 +15,7 @@ function badges(l: Layer) {
   if (l.clip) out.push(['클리핑', 'clip'])
   if (l.part == 'body') out.push(['몸', ''])
   if (l.show != 'always') out.push([showLabel[l.show]!, ''])
-  if (l.hair.enabled && l.part != 'body') out.push(['머리카락', 'hair'])
+  if (l.hair.enabled && l.part != 'body') out.push([l.hair.dir == 'up' ? '장식 물리' : '머리카락', 'hair'])
   return out
 }
 

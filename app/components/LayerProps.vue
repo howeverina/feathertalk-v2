@@ -147,17 +147,26 @@ function toggleAll() {
         </template>
       </RangeField>
 
-      <h4>머리카락</h4>
+      <h4>머리카락 · 장식</h4>
       <label class="switch">
         <input v-model="selected.hair.enabled" type="checkbox">
         <span class="knob" />
-        <span>머리카락 물리 (흔들림)</span>
+        <span>흔들림 물리</span>
       </label>
-      <p class="desc">켜면 고개를 움직일 때 머리카락 끝이 관성으로 뒤따라 출렁이고, 고개를 기울이면 중력 방향으로 늘어져요.</p>
+      <p class="desc">켜면 고개를 움직일 때 끝부분이 관성으로 뒤따라 출렁이고, 고개를 기울여도 원래 방향(아래 또는 위)을 유지하려 해요.</p>
       <div v-if="selected.hair.enabled" class="hair-fields">
+        <div class="row dir-row">
+          <span class="dir-label">흔들리는 쪽</span>
+          <div class="seg">
+            <button :class="{ on: selected.hair.dir == 'down' }" title="머리카락처럼 고정선 아래로 늘어진 것" @click="selected.hair.dir = 'down'">고정선 아래 (머리카락)</button>
+            <button :class="{ on: selected.hair.dir == 'up' }" title="리본·머리장식처럼 고정선 위로 솟은 것" @click="selected.hair.dir = 'up'">고정선 위 (리본·장식)</button>
+          </div>
+        </div>
         <RangeField
-          v-model="selected.hair.anchorY" label="고정선 높이" left="위" right="아래" :min="0" :max="0.95" :step="0.01" :def="0.25" :format="percent"
-          desc="이 선보다 위는 고정되고, 아래로 갈수록 많이 흔들려요. 보통 정수리나 가르마 높이에 둬요. 미리보기의 분홍 점선을 끌어도 돼요."
+          v-model="selected.hair.anchorY" label="고정선 높이" left="위" right="아래" :min="0" :max="1" :step="0.01" :def="0.25" :format="percent"
+          :desc="selected.hair.dir == 'up'
+            ? '이 선보다 아래는 고정되고, 위로 갈수록 많이 흔들려요. 리본이 머리에 붙은 높이에 둬요. 미리보기의 분홍 점선을 끌어도 돼요.'
+            : '이 선보다 위는 고정되고, 아래로 갈수록 많이 흔들려요. 보통 정수리나 가르마 높이에 둬요. 미리보기의 분홍 점선을 끌어도 돼요.'"
         />
         <RangeField v-model="selected.hair.sway" label="흔들림 세기" left="약하게" right="세게" :min="0" :max="100" :def="50" />
         <RangeField
@@ -315,6 +324,15 @@ function toggleAll() {
 
 .switch input:checked + .knob::after {
   left: 19px;
+}
+
+.dir-row {
+  margin-top: 8px;
+}
+
+.dir-label {
+  font-weight: 700;
+  font-size: 0.9rem;
 }
 
 .hair-fields {

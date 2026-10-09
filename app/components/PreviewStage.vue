@@ -100,7 +100,7 @@ function onPointerMove(e: PointerEvent) {
       c.r = round(clamp(Math.hypot(mx - c.x, my - c.y), 0.05, 0.6))
     } else if (preview.drag == 'anchor') {
       const l = anchorLayer()
-      if (l) l.hair.anchorY = Math.round(clamp(my, 0, 0.95) * 100) / 100
+      if (l) l.hair.anchorY = Math.round(clamp(my, 0, 1) * 100) / 100
     } else if (preview.drag == 'eyes') {
       model.value.eyes.y = round(clamp(my, 0, 1))
     } else if (preview.drag == 'eyesSize') {
@@ -140,15 +140,16 @@ function drawOverlay() {
   const active = (handle: Handle) => preview.hover == handle || preview.drag == handle
   ctx.font = '12px Pretendard, sans-serif'
 
-  // 머리카락 고정선 + 아래로 갈수록 많이 흔들린다는 표시
+  // 고정선 + 그 아래(또는 위)로 갈수록 많이 흔들린다는 표시
   const l = anchorLayer()
   if (l) {
     const ay = y + l.hair.anchorY * S
-    const g = ctx.createLinearGradient(0, ay, 0, y + S)
+    const end = l.hair.dir == 'up' ? y : y + S
+    const g = ctx.createLinearGradient(0, ay, 0, end)
     g.addColorStop(0, 'rgba(255,107,138,0)')
     g.addColorStop(1, 'rgba(255,107,138,0.15)')
     ctx.fillStyle = g
-    ctx.fillRect(x, ay, S, y + S - ay)
+    ctx.fillRect(x, Math.min(ay, end), S, Math.abs(end - ay))
     ctx.strokeStyle = '#ff6b8a'
     ctx.lineWidth = active('anchor') ? 3 : 2
     ctx.setLineDash([8, 6])
@@ -158,7 +159,7 @@ function drawOverlay() {
     ctx.stroke()
     ctx.setLineDash([])
     ctx.fillStyle = '#ff6b8a'
-    ctx.fillText(`머리카락 고정선 (${l.name})`, x + 6, ay - 6)
+    ctx.fillText(`${l.hair.dir == 'up' ? '장식' : '머리카락'} 고정선 (${l.name})`, x + 6, l.hair.dir == 'up' ? ay + 16 : ay - 6)
   }
 
   // 깜빡임 때 눌리는 눈 영역

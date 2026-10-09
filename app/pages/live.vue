@@ -20,6 +20,7 @@ const fps = ref(stored('ftFps', 60)) // 30이면 CPU/GPU 사용량이 절반 가
 const color = ref(localStorage.getItem('ftColor') || '#00ff00')
 const webcamOn = ref(localStorage.getItem('ftWebcam') == '1')
 const mirror = ref(localStorage.getItem('ftWebcamMirror') != '0') // 기본은 거울처럼
+const camEyes = ref(localStorage.getItem('ftWebcamEyes') != '0') // 웹캠으로 눈 깜빡임도 따라하기 (기본 켬)
 
 watch(thres, v => localStorage.setItem('ftThres', String(v)))
 watch(rig, v => localStorage.setItem('ftRig', String(v)))
@@ -28,6 +29,7 @@ watch(fps, v => localStorage.setItem('ftFps', String(v)))
 watch(color, v => localStorage.setItem('ftColor', v))
 watch(webcamOn, v => localStorage.setItem('ftWebcam', v ? '1' : '0'))
 watch(mirror, v => localStorage.setItem('ftWebcamMirror', v ? '1' : '0'))
+watch(camEyes, v => localStorage.setItem('ftWebcamEyes', v ? '1' : '0'))
 
 const idle = ref(false)
 const talking = ref(false)
@@ -198,7 +200,8 @@ onMounted(() => {
       breath: b,
       expression,
       eyesClosed: false,
-      blink: blinker.update(now),
+      // 웹캠에 눈이 잡히면 실제 눈을 따라가고, 아니면 불규칙한 자동 깜빡임
+      blink: (webcamOn.value && camEyes.value ? tracker.eyes() : null) ?? blinker.update(now),
       pop: pupilPop(blinker, now),
       eyes: model.eyes,
       // 말하는 동안 일정한 간격으로 뻐끔뻐끔, 열리고 닫힐 때 움직임
@@ -243,6 +246,7 @@ onBeforeUnmount(() => {
             <Crosshair :size="15" /> 정면 맞추기
           </button>
           <label title="켜면 거울처럼, 내가 왼쪽을 보면 캐릭터도 화면 왼쪽을 봐요"><input v-model="mirror" type="checkbox"> 좌우 반전</label>
+          <label title="눈을 감으면 캐릭터도 감아요. 얼굴을 놓치면 자동 깜빡임으로 돌아가요."><input v-model="camEyes" type="checkbox"> 눈 깜빡임도</label>
         </template>
       </span>
       <label><span>배경색</span><input v-model="color" type="color"></label>

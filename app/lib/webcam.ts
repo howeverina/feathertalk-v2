@@ -12,6 +12,22 @@ const LOST_AFTER = 1000 // ms, 이만큼 얼굴이 안 보이면 놓친 것으�
 const SMOOTH = 0.5 // 떨림 줄이기 (0~1, 클수록 새 값을 많이 반영)
 
 export interface FacePose { yaw: number; pitch: number; roll: number } // rad
+
+// 얼굴 점(478개) 중 눈꺼풀과 눈꼬리 번호
+const EYES = [
+  { top: 159, bottom: 145, outer: 33, inner: 133 },
+  { top: 386, bottom: 374, outer: 263, inner: 362 },
+]
+
+type Point3 = { x: number; y: number }
+const dist = (a: Point3, b: Point3) => Math.hypot(a.x - b.x, a.y - b.y)
+
+// 두 눈의 (눈꺼풀 사이 거리 ÷ 눈 너비) 평균. 뜬 눈은 대략 0.25~0.35, 감으면 0.1 아래.
+function eyeOpenness(lm: Point3[]): number {
+  let sum = 0
+  for (const e of EYES) sum += dist(lm[e.top]!, lm[e.bottom]!) / Math.max(1e-6, dist(lm[e.outer]!, lm[e.inner]!))
+  return sum / EYES.length
+}
 export type WebcamStatus = 'off' | 'loading' | 'tracking' | 'searching' | 'error'
 
 // 얼굴 변환 행렬(열 우선 4x4, 카메라 기준 x 오른쪽 / y 위 / z 카메라 쪽)에서 각도를 뽑는다.
@@ -36,6 +52,8 @@ export class WebcamTracker {
   private landmarker: FaceLandmarker | null = null
   private timer: ReturnType<typeof setInterval> | undefined
   private raw: FacePose | null = null
+  private openBase = 0 // 평소 뜬 눈의 값 (사람마다 달라서 스스로 학습)
+  eyeClose = 0 // 0(뜸) ~ 1(감음)
   private lastSeen = -Infinity
   private running = false
 
@@ -97,7 +115,17 @@ export class WebcamTracker {
     const v = this.video, lm = this.landmarker
     if (!v || !lm || v.readyState < 2) return
     const now = performance.now()
-    const m = lm.detectForVideo(v, now).facialTransformationMatrixes?.[0]
+    const result = lm.detectForVideo(v, now)
+    const m = result.facialTransformationMatrixes?.[0]
+    const points = result.faceLandmarks?.[0]
+    if (points) {
+      const o = eyeOpenness(points)
+      // 뜬 눈 기준값: 더 크게 뜨면 빠르게 따라 올라가고, 평소엔 아주 천천히 내려온다
+      this.openBase = o > this.openBase ? this.openBase + (o - this.openBase) * 0.3 : this.openBase * 0.999
+      this.openBase = Math.max(this.openBase, 0.15)
+      // 기준의 85% 이상이면 뜸, 55% 이하면 감음 (감은 눈 그림으로 바뀌는 건 약 58%부터)
+      this.eyeClose = Math.max(0, Math.min(1, (0.85 - o / this.openBase) / 0.3))
+    }
     if (m) {
       const p = poseFromMatrix(m.data)
       const prev = this.raw
@@ -114,6 +142,11 @@ export class WebcamTracker {
       this.raw = null
       this.setStatus('searching')
     }
+  }
+
+  // 눈 감은 정도 (0~1). 얼굴을 놓쳤으면 null.
+  eyes(): number | null {
+    return this.status == 'tracking' && this.raw ? this.eyeClose : null
   }
 
   // 지금 자세를 정면으로
@@ -143,6 +176,8 @@ export class WebcamTracker {
     this.video?.remove()
     this.video = null
     this.raw = null
+    this.openBase = 0
+    this.eyeClose = 0
     if (this.status != 'error') this.setStatus('off')
   }
 }

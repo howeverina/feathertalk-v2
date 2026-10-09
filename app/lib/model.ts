@@ -6,6 +6,7 @@ export type ShowMode = 'always' | 'eyesOpen' | 'eyesClosed' | 'mouthClosed' | 'm
 
 export interface HairParams {
   enabled: boolean
+  dir: 'down' | 'up' // 고정선의 아래쪽이 흔들림(머리카락) / 위쪽이 흔들림(리본 같은 장식)
   anchorY: number
   sway: number
   stiffness: number
@@ -59,7 +60,7 @@ export const SHOW_OPTIONS: [ShowMode, string][] = [
   ['mouthOpen', '입 열 때'],
 ]
 
-const HAIR_OFF: HairParams = { enabled: false, anchorY: 0.25, sway: 50, stiffness: 50, bounce: 50 }
+const HAIR_OFF: HairParams = { enabled: false, dir: 'down', anchorY: 0.25, sway: 50, stiffness: 50, bounce: 50 }
 
 interface Preset {
   label: string
@@ -75,7 +76,7 @@ interface Preset {
 
 // 레이어 추가 메뉴에 나오는 프리셋
 export const PRESETS = {
-  bang: { label: '앞머리', name: '앞머리', depth: 30, curve: 40, hair: { enabled: true, anchorY: 0.22, sway: 50, stiffness: 50, bounce: 50 } },
+  bang: { label: '앞머리', name: '앞머리', depth: 30, curve: 40, hair: { enabled: true, dir: 'down', anchorY: 0.22, sway: 50, stiffness: 50, bounce: 50 } },
   eyes: { label: '눈 (뜬 눈)', name: '눈', depth: 25, curve: 30, show: 'eyesOpen' },
   eyesClosed: { label: '눈 (감은 눈)', name: '감은 눈', depth: 25, curve: 30, show: 'eyesClosed' },
   // 흰자 레이어를 고른 채로 추가하면 그 바로 위에 들어가서 흰자 안쪽으로 잘린다
@@ -85,7 +86,8 @@ export const PRESETS = {
   mouthOpen: { label: '입 (벌린 입)', name: '벌린 입', depth: 25, curve: 30, show: 'mouthOpen' },
   face: { label: '얼굴', name: '얼굴', depth: 0, curve: 40 },
   body: { label: '몸', name: '몸', part: 'body' },
-  back: { label: '뒷머리', name: '뒷머리', depth: -12, curve: -20, hair: { enabled: true, anchorY: 0.3, sway: 40, stiffness: 40, bounce: 50 } },
+  ribbon: { label: '리본·장식 (위로)', name: '리본', depth: 10, curve: 10, hair: { enabled: true, dir: 'up', anchorY: 0.25, sway: 60, stiffness: 55, bounce: 70 } },
+  back: { label: '뒷머리', name: '뒷머리', depth: -12, curve: -20, hair: { enabled: true, dir: 'down', anchorY: 0.3, sway: 40, stiffness: 40, bounce: 50 } },
   blank: { label: '빈 레이어', name: '새 레이어' },
 } satisfies Record<string, Preset>
 
