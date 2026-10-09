@@ -19,15 +19,18 @@ const EYES = [
   { top: 386, bottom: 374, outer: 263, inner: 362 },
 ]
 
-type Point3 = { x: number; y: number }
-const dist = (a: Point3, b: Point3) => Math.hypot(a.x - b.x, a.y - b.y)
+type Point3 = { x: number; y: number; z: number }
 
-// 두 눈의 (눈꺼풀 사이 거리 ÷ 눈 너비) 평균. 뜬 눈은 대략 0.25~0.35, 감으면 0.1 아래.
-function eyeOpenness(lm: Point3[]): number {
+// 두 눈의 (눈꺼풀 사이 거리 ÷ 눈 너비) 평균. 고개를 돌려도 덜 변하도록 깊이(z)까지 넣은 3D 거리로 잰다.
+// w, h: 영상 크기 (좌표가 가로/세로 따로 0~1로 정규화돼 있어서 비율을 맞춘다)
+function eyeOpenness(lm: Point3[], w: number, h: number): number {
+  const d = (a: Point3, b: Point3) => Math.hypot((a.x - b.x) * w, (a.y - b.y) * h, (a.z - b.z) * w)
   let sum = 0
-  for (const e of EYES) sum += dist(lm[e.top]!, lm[e.bottom]!) / Math.max(1e-6, dist(lm[e.outer]!, lm[e.inner]!))
+  for (const e of EYES) sum += d(lm[e.top]!, lm[e.bottom]!) / Math.max(1e-6, d(lm[e.outer]!, lm[e.inner]!))
   return sum / EYES.length
 }
+
+const EYE_HISTORY = 150 // 최근 10초 (초당 15번)
 export type WebcamStatus = 'off' | 'loading' | 'tracking' | 'searching' | 'error'
 
 // 얼굴 변환 행렬(열 우선 4x4, 카메라 기준 x 오른쪽 / y 위 / z 카메라 쪽)에서 각도를 뽑는다.
@@ -52,7 +55,7 @@ export class WebcamTracker {
   private landmarker: FaceLandmarker | null = null
   private timer: ReturnType<typeof setInterval> | undefined
   private raw: FacePose | null = null
-  private openBase = 0 // 평소 뜬 눈의 값 (사람마다 달라서 스스로 학습)
+  private eyeHistory: number[] = [] // 정면일 때 잰 눈 뜬 정도 최근 기록 (평소 뜬 눈 기준을 정한다)
   closed = false // 확실히 감고 있는 상태일 때만 true
   private closedCount = 0
   private lastSeen = -Infinity
@@ -119,18 +122,6 @@ export class WebcamTracker {
     const result = lm.detectForVideo(v, now)
     const m = result.facialTransformationMatrixes?.[0]
     const points = result.faceLandmarks?.[0]
-    if (points) {
-      const o = eyeOpenness(points)
-      // 뜬 눈 기준값: 더 크게 뜨면 빠르게 따라 올라가고, 평소엔 아주 천천히 내려온다
-      this.openBase = o > this.openBase ? this.openBase + (o - this.openBase) * 0.3 : this.openBase * 0.999
-      this.openBase = Math.max(this.openBase, 0.15)
-      // 확실히 감았을 때만 감음: 기준의 55% 아래로 연속 2번 내려가면 감음, 70% 위로 올라오면 뜸.
-      // 기준을 둘로 나눠서 애매한 값에 눈이 깜빡거리지 않게 한다.
-      const r = o / this.openBase
-      this.closedCount = r < 0.55 ? this.closedCount + 1 : 0
-      if (this.closedCount >= 2) this.closed = true
-      else if (r > 0.7) this.closed = false
-    }
     if (m) {
       const p = poseFromMatrix(m.data)
       const prev = this.raw
@@ -143,10 +134,34 @@ export class WebcamTracker {
         : p
       this.lastSeen = now
       this.setStatus('tracking')
+      if (points) this.updateEyes(eyeOpenness(points, v.videoWidth || 320, v.videoHeight || 240))
     } else if (now - this.lastSeen > LOST_AFTER) {
       this.raw = null
       this.setStatus('searching')
     }
+  }
+
+  private updateEyes(o: number) {
+    // 평소 뜬 눈 기준: 고개를 크게 돌리거나 숙였을 때 값은 빼고, 최근 10초 기록 중 위에서 20% 지점.
+    // 한 번 튄 값에 끌려가지 않고, 어긋나도 10초 안에 스스로 돌아온다.
+    const r = this.raw!
+    const frontal = Math.abs(r.yaw - this.zero.yaw) < 0.35 && Math.abs(r.pitch - this.zero.pitch) < 0.35
+    if (frontal) {
+      this.eyeHistory.push(o)
+      if (this.eyeHistory.length > EYE_HISTORY) this.eyeHistory.shift()
+    }
+    if (this.eyeHistory.length < 15) {
+      this.closed = false
+      return
+    }
+    const sorted = [...this.eyeHistory].sort((a, b) => a - b)
+    const base = sorted[Math.floor(sorted.length * 0.8)]!
+    // 확실히 감았을 때만 감음: 기준의 55% 아래로 연속 2번 내려가면 감음, 70% 위로 올라오면 뜸.
+    // 기준을 둘로 나눠서 애매한 값에 눈이 깜빡거리지 않게 한다.
+    const ratio = o / base
+    this.closedCount = ratio < 0.55 ? this.closedCount + 1 : 0
+    if (this.closedCount >= 2) this.closed = true
+    else if (ratio > 0.7) this.closed = false
   }
 
   // 눈을 감고 있는지. 얼굴을 놓쳤으면 null.
@@ -181,7 +196,7 @@ export class WebcamTracker {
     this.video?.remove()
     this.video = null
     this.raw = null
-    this.openBase = 0
+    this.eyeHistory = []
     this.closed = false
     this.closedCount = 0
     if (this.status != 'error') this.setStatus('off')
