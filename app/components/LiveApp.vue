@@ -5,6 +5,7 @@ import { loadModel, resolveSrc, selectStorage } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
 import { Arms, Blinker, EyeFollow, Head, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, cameraToTarget, headTarget, lookAt } from '~/lib/physics'
 import { WebcamTracker, type WebcamStatus } from '~/lib/webcam'
+import { createPinch } from '~/lib/gesture'
 
 // ---- 설정 (기존과 같은 localStorage 키) ----
 
@@ -59,6 +60,11 @@ try {
 } catch (e) {}
 watch(view, v => localStorage.setItem(VIEW_KEY, JSON.stringify(v)))
 let panning = false
+// 터치 화면: 두 손가락으로 확대·이동
+const pinch = createPinch(() => stage.value!.getBoundingClientRect(), view)
+const onTouchDown = (e: PointerEvent) => beta && pinch.down(e)
+const onTouchMove = (e: PointerEvent) => beta && pinch.move(e)
+const onTouchUp = (e: PointerEvent) => pinch.up(e)
 
 function onWheel(e: WheelEvent) {
   if (!beta || !stage.value) return
@@ -219,6 +225,10 @@ onMounted(() => {
   document.addEventListener('mouseup', onMouseUp)
   document.addEventListener('contextmenu', onContextMenu)
   window.addEventListener('wheel', onWheel, { passive: false })
+  document.addEventListener('pointerdown', onTouchDown)
+  document.addEventListener('pointermove', onTouchMove)
+  document.addEventListener('pointerup', onTouchUp)
+  document.addEventListener('pointercancel', onTouchUp)
   startMic()
   if (webcamOn.value) tracker.start()
 
@@ -288,6 +298,10 @@ onBeforeUnmount(() => {
   document.removeEventListener('mouseup', onMouseUp)
   document.removeEventListener('contextmenu', onContextMenu)
   window.removeEventListener('wheel', onWheel)
+  document.removeEventListener('pointerdown', onTouchDown)
+  document.removeEventListener('pointermove', onTouchMove)
+  document.removeEventListener('pointerup', onTouchUp)
+  document.removeEventListener('pointercancel', onTouchUp)
   audio?.stream.getTracks().forEach(t => t.stop())
   audio?.ctx.close()
   tracker.stop()
@@ -319,13 +333,13 @@ onBeforeUnmount(() => {
           <label title="눈을 확실히 감고 있으면 캐릭터도 감아요 (약간 늦게 반응해요). 얼굴을 놓치면 자동 깜빡임으로 돌아가요."><input v-model="camEyes" type="checkbox"> 눈 깜빡임도</label>
         </template>
       </span>
-      <button v-if="beta" class="cam-toggle" title="휠로 확대/축소, 우클릭 드래그로 위치를 옮길 수 있어요. 누르면 처음 구도로 돌아가요." @click="fitView">
+      <button v-if="beta" class="cam-toggle" title="휠이나 두 손가락 핀치로 확대/축소, 우클릭이나 두 손가락 드래그로 위치를 옮길 수 있어요. 누르면 처음 구도로 돌아가요." @click="fitView">
         <Maximize :size="15" /> 화면 맞춤
       </button>
       <label><span>배경색</span><input v-model="color" type="color"></label>
       <span class="hint">숫자키 1~0: 표정 전환 · <Mic class="mic" :class="{ on: talking }" :size="14" :title="talking ? '말하는 중' : '조용함'" /></span>
     </div>
-    <canvas ref="stage" class="stage" />
+    <canvas ref="stage" class="stage" :class="{ touch: beta }" />
     <div v-if="noGL" class="nogl">
       이 브라우저는 WebGL을 지원하지 않아요. <a href="/legacy/live.html">이전 버전으로 열기</a>
     </div>
@@ -345,6 +359,10 @@ body.live.idle {
 </style>
 
 <style scoped>
+.stage.touch {
+  touch-action: none; /* 두 손가락 확대·이동을 브라우저 대신 직접 처리 */
+}
+
 .stage {
   position: fixed;
   inset: 3rem 0 0 0;

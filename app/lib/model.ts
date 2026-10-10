@@ -70,6 +70,7 @@ export interface BodyRig {
   joints: Joints
   radius: number // 몸통 두께 (원기둥 반지름, 가로 기준)
   follow: number // 몸이 얼굴 각도를 따라가는 정도 (%)
+  sway: number // 골반이 밀리고 무릎이 굽는 정도 (0~100, 50이 기본)
   mirror: boolean // 관절을 좌우 대칭으로 움직이기
 }
 
@@ -191,7 +192,7 @@ function baseModel(): Model {
     eyes: { squash: false, y: 0.4, h: 0.05 },
     mouth: { animate: true },
     aspect: 1,
-    body: { enabled: false, joints: defaultJoints(), radius: 0.15, follow: 35, mirror: true },
+    body: { enabled: false, joints: defaultJoints(), radius: 0.15, follow: 35, sway: 50, mirror: true },
     layers: [],
   }
 }

@@ -101,23 +101,64 @@ export interface PoseInput {
   arms?: ArmAngles
 }
 
-// 기울기를 관절마다 나눠 받는 비율: 하체(발끝), 상체(허리), 머리(목)
+// 기울기를 관절마다 나눠 받는 비율: 골반, 상체(허리), 머리(목)
 export const ROLL_SHARE = { lower: 0.1, upper: 0.35, head: 0.55 }
+
+const apply = (t: Aff, p: P): P => ({ x: t[0] * p.x + t[2] * p.y + t[4], y: t[1] * p.x + t[3] * p.y + t[5] })
+const translate = (x: number, y: number): Aff => [1, 0, 0, 1, x, y]
+
+// 쉴 때 선분(a→b)을 지금 선분(a2→b2)으로 옮기는 변환. 뼈 방향으로만 늘고 줄어든다
+// (무릎이 카메라 쪽으로 굽으면 다리가 짧아 보이는 것처럼).
+function segmentMap(a: P, b: P, a2: P, b2: P): Aff {
+  const L = Math.hypot(b.x - a.x, b.y - a.y) || 1e-6
+  const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L
+  const L2 = Math.hypot(b2.x - a2.x, b2.y - a2.y) || 1e-6
+  const vx = (b2.x - a2.x) / L2, vy = (b2.y - a2.y) / L2
+  const k = L2 / L
+  // M = k·v·uᵀ + n2·nᵀ  (n, n2는 각각 u, v에 수직)
+  const m00 = k * vx * ux + vy * uy, m01 = k * vx * uy - vy * ux
+  const m10 = k * vy * ux - vx * uy, m11 = k * vy * uy + vx * ux
+  return [m00, m10, m01, m11, a2.x - (m00 * a.x + m01 * a.y), a2.y - (m10 * a.x + m11 * a.y)]
+}
+
+// 다리: 발목은 바닥에 그대로 두고, 엉덩이가 내려앉은 만큼 무릎이 굽는다.
+// 쉴 때 무릎이 다리 선에서 벗어나 있던 만큼은 유지하고, 굽을수록 바깥쪽으로 살짝 벌어진다.
+function leg(hip: P, knee: P, ankle: P, hip2: P, outward: number): [Aff, Aff] {
+  const v = { x: ankle.x - hip.x, y: ankle.y - hip.y }, D0 = Math.hypot(v.x, v.y) || 1e-6
+  const u = { x: v.x / D0, y: v.y / D0 }, n = { x: -u.y, y: u.x }
+  const tk = ((knee.x - hip.x) * u.x + (knee.y - hip.y) * u.y) / D0
+  const ek = (knee.x - hip.x) * n.x + (knee.y - hip.y) * n.y
+
+  const v2 = { x: ankle.x - hip2.x, y: ankle.y - hip2.y }, D = Math.hypot(v2.x, v2.y) || 1e-6
+  const u2 = { x: v2.x / D, y: v2.y / D }, n2 = { x: -u2.y, y: u2.x }
+  const bend = Math.max(0, Math.min(0.5, (D0 - D) / D0))
+  const L1 = Math.hypot(knee.x - hip.x, knee.y - hip.y)
+  const side = Math.sign(n2.x * outward) || 1
+  const off = ek + side * bend * L1 * 1.2
+  const knee2 = { x: hip2.x + u2.x * tk * D + n2.x * off, y: hip2.y + u2.y * tk * D + n2.y * off }
+  return [segmentMap(hip, knee, hip2, knee2), segmentMap(knee, ankle, knee2, ankle)]
+}
 
 // 뼈마다 쉴 때 → 지금 자세로 옮기는 변환 (부모에서 자식 순서로 쌓는다)
 export function poseBones(rig: BodyRig, aspect: number, input: PoseInput): Aff[] {
   const j = pts(rig.joints, aspect)
   const h = input.head, arms = input.arms
-  const feet = mid(j.ankleL, j.ankleR)
   const [sx, sy] = input.squash || [1, 1]
   const out: Aff[] = new Array(BONE_COUNT).fill(ID)
+  const f = rig.follow / 100, sway = (rig.sway ?? 50) / 50
+  const hipC = mid(j.hipL, j.hipR)
 
-  const root = mul(rotAbout(feet, h.roll * ROLL_SHARE.lower), scaleAbout(feet, sx, sy * (1 + (input.stretch || 0))))
-  out[BONE.root] = root
-  out[BONE.pelvis] = root
-  out[BONE.thighL] = out[BONE.shinL] = root
-  out[BONE.thighR] = out[BONE.shinR] = root
-  const spine = mul(root, rotAbout(j.waist, h.roll * ROLL_SHARE.upper))
+  // 골반: 고개를 돌리거나 기울인 반대쪽으로 살짝 밀리고, 그만큼(+ 고개를 숙이면 조금 더) 내려앉는다
+  const dx = -(h.yaw * 0.5 + h.roll * 0.8) * f * 0.15 * sway
+  const dy = Math.abs(dx) * 1.5 + Math.max(0, h.pitch) * f * 0.06 * sway
+  const pelvis = mul(translate(dx, dy), rotAbout(hipC, h.roll * ROLL_SHARE.lower))
+  out[BONE.root] = pelvis
+  out[BONE.pelvis] = pelvis
+  ;[out[BONE.thighL], out[BONE.shinL]] = leg(j.hipL, j.kneeL, j.ankleL, apply(pelvis, j.hipL), j.hipL.x - hipC.x || -1)
+  ;[out[BONE.thighR], out[BONE.shinR]] = leg(j.hipR, j.kneeR, j.ankleR, apply(pelvis, j.hipR), j.hipR.x - hipC.x || 1)
+
+  // 상체: 골반을 따라가고, 허리 기준으로 기울고, 숨 쉴 때 가슴이 부푼다
+  const spine = mul(pelvis, mul(rotAbout(j.waist, h.roll * ROLL_SHARE.upper), scaleAbout(j.waist, sx, sy * (1 + (input.stretch || 0)))))
   out[BONE.spine] = spine
   out[BONE.upperArmL] = mul(spine, rotAbout(j.shoulderL, arms?.upperL || 0))
   out[BONE.foreArmL] = mul(out[BONE.upperArmL], rotAbout(j.elbowL, arms?.foreL || 0))

@@ -79,6 +79,10 @@ const strength = (v: number) => v + '%'
         desc="고개를 돌리고 기울일 때 몸이 따라 도는 비율이에요. 라이브투디에서는 보통 3분의 1 정도예요."
       />
       <RangeField
+        v-model="model.body.sway" label="골반·무릎 움직임" left="없음" right="크게" :min="0" :max="100" :def="50"
+        desc="고개를 돌리거나 기울이면 골반이 반대쪽으로 살짝 밀리며 내려앉고, 발은 바닥에 붙은 채 무릎이 굽어요."
+      />
+      <RangeField
         v-model="model.body.radius" label="몸통 두께" left="얇게" right="두껍게" :min="0.02" :max="0.5" :step="0.005" :def="0.15" :format="percent"
         desc="몸통 원기둥의 반지름이에요. 미리보기에서 허리 양옆 점선을 끌어도 돼요. 이 안쪽은 몸통 뼈에 붙어요."
       />

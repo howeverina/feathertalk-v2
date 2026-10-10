@@ -3,6 +3,7 @@ import { JOINTS, resolveSrc, type JointName, type Layer } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
 import { Arms, Blinker, Head, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
 import { BONE_LINES, mirrorOf } from '~/lib/skeleton'
+import { createPinch } from '~/lib/gesture'
 import type { Handle, MotionMode } from '~/composables/useEditor'
 
 const ed = useEditor()
@@ -97,8 +98,14 @@ function hitTest(p: { x: number; y: number }): Handle | null {
 }
 
 let panning = false
+// 베타: 터치 화면에서 두 손가락으로 확대·이동
+const pinch = createPinch(() => overlay.value!.getBoundingClientRect(), preview.view)
 
 function onPointerDown(e: PointerEvent) {
+  if (beta && pinch.down(e)) {
+    preview.drag = null
+    return
+  }
   // 베타: 우클릭 드래그로 화면 이동
   if (beta && e.button == 2) {
     panning = true
@@ -111,13 +118,15 @@ function onPointerDown(e: PointerEvent) {
   overlay.value!.setPointerCapture(e.pointerId)
 }
 
-function onPointerUp() {
+function onPointerUp(e: PointerEvent) {
+  pinch.up(e)
   preview.drag = null
   panning = false
 }
 
 function onPointerMove(e: PointerEvent) {
   const p = pointer(e)
+  if (beta && (pinch.move(e) || pinch.active)) return
   if (panning) {
     preview.view.x += e.movementX
     preview.view.y += e.movementY
@@ -388,6 +397,7 @@ onBeforeUnmount(() => {
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
+        @pointercancel="onPointerUp"
         @pointerleave="onPointerLeave"
         @wheel="onWheel"
         @contextmenu.prevent
@@ -400,7 +410,7 @@ onBeforeUnmount(() => {
     <div v-if="beta" class="toolbar">
       <span class="label">보기</span>
       <button class="toggle" title="휠로 확대/축소, 우클릭 드래그로 이동할 수 있어요" @click="fitView">화면 맞춤</button>
-      <span class="tip">{{ Math.round(preview.view.zoom * 100) }}% · 휠: 확대/축소 · 우클릭 드래그: 이동</span>
+      <span class="tip">{{ Math.round(preview.view.zoom * 100) }}% · 휠/핀치: 확대·축소 · 우클릭/두 손가락 드래그: 이동</span>
       <label v-if="model.body.enabled" class="check"><input v-model="preview.showJoints" type="checkbox"> 관절 표시</label>
     </div>
     <div class="toolbar">
