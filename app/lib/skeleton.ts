@@ -122,8 +122,8 @@ function segmentMap(a: P, b: P, a2: P, b2: P): Aff {
 }
 
 // 다리: 발목은 바닥에 그대로 두고, 엉덩이가 내려앉은 만큼 무릎이 굽는다.
-// 쉴 때 무릎이 다리 선에서 벗어나 있던 만큼은 유지하고, 굽을수록 바깥쪽으로 살짝 벌어진다.
-function leg(hip: P, knee: P, ankle: P, hip2: P, outward: number): [Aff, Aff] {
+// 쉴 때 무릎이 다리 선에서 벗어나 있던 만큼은 유지하고, 굽을수록 안쪽(다른 다리 쪽)으로 살짝 모인다.
+function leg(hip: P, knee: P, ankle: P, hip2: P, inward: number): [Aff, Aff] {
   const v = { x: ankle.x - hip.x, y: ankle.y - hip.y }, D0 = Math.hypot(v.x, v.y) || 1e-6
   const u = { x: v.x / D0, y: v.y / D0 }, n = { x: -u.y, y: u.x }
   const tk = ((knee.x - hip.x) * u.x + (knee.y - hip.y) * u.y) / D0
@@ -133,7 +133,7 @@ function leg(hip: P, knee: P, ankle: P, hip2: P, outward: number): [Aff, Aff] {
   const u2 = { x: v2.x / D, y: v2.y / D }, n2 = { x: -u2.y, y: u2.x }
   const bend = Math.max(0, Math.min(0.5, (D0 - D) / D0))
   const L1 = Math.hypot(knee.x - hip.x, knee.y - hip.y)
-  const side = Math.sign(n2.x * outward) || 1
+  const side = Math.sign(n2.x * inward) || 1
   const off = ek + side * bend * L1 * 1.2
   const knee2 = { x: hip2.x + u2.x * tk * D + n2.x * off, y: hip2.y + u2.y * tk * D + n2.y * off }
   return [segmentMap(hip, knee, hip2, knee2), segmentMap(knee, ankle, knee2, ankle)]
@@ -154,8 +154,8 @@ export function poseBones(rig: BodyRig, aspect: number, input: PoseInput): Aff[]
   const pelvis = mul(translate(dx, dy), rotAbout(hipC, h.roll * ROLL_SHARE.lower))
   out[BONE.root] = pelvis
   out[BONE.pelvis] = pelvis
-  ;[out[BONE.thighL], out[BONE.shinL]] = leg(j.hipL, j.kneeL, j.ankleL, apply(pelvis, j.hipL), j.hipL.x - hipC.x || -1)
-  ;[out[BONE.thighR], out[BONE.shinR]] = leg(j.hipR, j.kneeR, j.ankleR, apply(pelvis, j.hipR), j.hipR.x - hipC.x || 1)
+  ;[out[BONE.thighL], out[BONE.shinL]] = leg(j.hipL, j.kneeL, j.ankleL, apply(pelvis, j.hipL), hipC.x - j.hipL.x || 1)
+  ;[out[BONE.thighR], out[BONE.shinR]] = leg(j.hipR, j.kneeR, j.ankleR, apply(pelvis, j.hipR), hipC.x - j.hipR.x || -1)
 
   // 상체: 골반을 따라가고, 허리 기준으로 기울고, 숨 쉴 때 가슴이 부푼다
   const spine = mul(pelvis, mul(rotAbout(j.waist, h.roll * ROLL_SHARE.upper), scaleAbout(j.waist, sx, sy * (1 + (input.stretch || 0)))))
