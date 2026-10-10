@@ -1,13 +1,14 @@
 // 편집기 전체가 함께 쓰는 상태 (모델, 선택한 레이어, 미리보기 상태)
 import {
-  loadModel, saveModel, newLayer, duplicateLayer, defaultModel, cleanupFiles, putFile, exportJSON, importJSON,
+  loadModel, saveModel, newLayer, duplicateLayer, defaultModel, cleanupFiles, putFile, exportJSON, importJSON, selectStorage,
   type Layer, type LayerSource, type Model, type PresetKey,
 } from '~/lib/model'
 
 export type MotionMode = 'mouse' | 'auto' | 'still'
-export type Handle = 'center' | 'radius' | 'anchor' | 'eyes' | 'eyesSize'
+export type Handle = 'center' | 'radius' | 'anchor' | 'eyes' | 'eyesSize' | 'bodyR' | `joint:${string}`
 
-function createEditor() {
+function createEditor(beta: boolean) {
+  selectStorage(beta)
   const model = ref<Model>(loadModel())
   const selectedId = ref<string | null>(model.value.layers[0]?.id ?? null)
   const selected = computed(() => model.value.layers.find(l => l.id == selectedId.value) || null)
@@ -22,6 +23,8 @@ function createEditor() {
     target: { x: 0, y: 0 },
     drag: null as Handle | null,
     hover: null as Handle | null,
+    view: { zoom: 1, x: 0, y: 0 }, // 베타: 미리보기 확대·이동
+    showJoints: true, // 베타: 관절 표시
   })
 
   // ---- 저장 ----
@@ -152,9 +155,11 @@ function createEditor() {
   }
 }
 
-let editor: ReturnType<typeof createEditor> | null = null
+const editors = new Map<boolean, ReturnType<typeof createEditor>>()
 
+// 정식판(/)과 베타(/beta)는 저장 공간이 따로라 상태도 따로 만든다
 export function useEditor() {
-  if (!editor) editor = createEditor()
-  return editor
+  const beta = useBeta()
+  if (!editors.has(beta)) editors.set(beta, createEditor(beta))
+  return editors.get(beta)!
 }

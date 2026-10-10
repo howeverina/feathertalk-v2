@@ -1,5 +1,12 @@
 <script setup lang="ts">
+import { defaultJoints } from '~/lib/model'
+
 const { model } = useEditor()
+const beta = useBeta()
+
+function resetJoints() {
+  if (confirm('관절 위치를 기본값으로 되돌릴까요?')) model.value.body.joints = defaultJoints()
+}
 const percent = (v: number) => Math.round(v * 100) + '%'
 const strength = (v: number) => v + '%'
 </script>
@@ -53,9 +60,54 @@ const strength = (v: number) => v + '%'
     />
     <p class="tip">슬라이더를 더블클릭하면 기본값으로 돌아가요. 모든 설정은 이 브라우저에 자동 저장돼요.</p>
   </section>
+
+  <section v-if="beta" class="panel">
+    <h3>몸 리깅 <span class="beta-tag">BETA</span></h3>
+    <p class="desc">
+      전신 그림용이에요. 미리보기에서 관절점(목·허리·어깨·팔꿈치·손목·엉덩이·무릎·발목)을 끌어 그림에 맞추면,
+      '몸' 레이어의 각 부분이 가장 가까운 뼈를 자동으로 따라가요. 몸은 얼굴 각도를 따라 원기둥처럼 돌고,
+      팔은 어깨에 매달려 흔들리고, 다리는 서 있어요. '머리' 레이어는 머리 뼈를 따라가요.
+      그림 비율(세로로 긴 그림)은 자동으로 읽어요: 지금 {{ model.aspect }} : 1.
+    </p>
+    <label class="check-row">
+      <input v-model="model.body.enabled" type="checkbox">
+      <b>몸 리깅 켜기</b>
+    </label>
+    <template v-if="model.body.enabled">
+      <RangeField
+        v-model="model.body.follow" label="몸이 얼굴을 따라가는 정도" left="조금" right="많이" :min="0" :max="100" :def="35" :format="strength"
+        desc="고개를 돌리고 기울일 때 몸이 따라 도는 비율이에요. 라이브투디에서는 보통 3분의 1 정도예요."
+      />
+      <RangeField
+        v-model="model.body.radius" label="몸통 두께" left="얇게" right="두껍게" :min="0.02" :max="0.5" :step="0.005" :def="0.15" :format="percent"
+        desc="몸통 원기둥의 반지름이에요. 미리보기에서 허리 양옆 점선을 끌어도 돼요. 이 안쪽은 몸통 뼈에 붙어요."
+      />
+      <label class="check-row">
+        <input v-model="model.body.mirror" type="checkbox">
+        관절을 좌우 대칭으로 움직이기
+      </label>
+      <button class="plain reset" @click="resetJoints">관절 위치 기본값으로</button>
+    </template>
+  </section>
+
 </template>
 
 <style scoped>
+.beta-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: #ff6b8a;
+  color: white;
+  font-size: 0.7rem;
+  vertical-align: middle;
+}
+
+.reset {
+  margin-top: 10px;
+}
+
 .check-row {
   display: flex;
   align-items: center;

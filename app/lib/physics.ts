@@ -142,6 +142,29 @@ export function breath(t: number, strength: number, center: Model['center']): Br
   return { bodyStretch: e, headBob: (neck - 1) * e, hairLag: Math.sin(phase - 0.9) * s }
 }
 
+// 팔: 어깨에 매달려서, 몸이 기울면 중력 방향으로 늘어지려 관성 있게 흔들린다.
+// 팔 아래쪽은 위쪽보다 한 박자 늦게 따라간다.
+export class Arms {
+  upper: Spring = { x: 0, v: 0 }
+  fore: Spring = { x: 0, v: 0 }
+  acc = 0
+
+  // bodyRoll: 어깨가 기운 정도 (하체 + 상체 기울기)
+  update(dt: number, bodyRoll: number, t: number) {
+    this.acc += Math.min(dt, 0.1)
+    while (this.acc >= STEP) {
+      this.acc -= STEP
+      spring(this.upper, -bodyRoll * 0.85, 40, 2 * 0.3 * Math.sqrt(40), STEP)
+      spring(this.fore, -this.upper.x * 0.35, 25, 2 * 0.3 * Math.sqrt(25), STEP)
+    }
+    const sway = Math.sin(t * 1.6) * 0.012 // 숨 쉴 때 살짝
+    return {
+      upperL: this.upper.x - sway, foreL: this.fore.x,
+      upperR: this.upper.x + sway, foreR: this.fore.x,
+    }
+  }
+}
+
 // 입이 열리고 닫히는 순간의 움직임 (0 다문 입 ~ 1 다 벌림).
 // 열릴 땐 작은 크기에서 쑥 커지고, 닫힐 땐 작아진 뒤 다문 입으로 바뀐다.
 const MOUTH_OPEN_TIME = 0.07, MOUTH_CLOSE_TIME = 0.05 // 초

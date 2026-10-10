@@ -1,18 +1,27 @@
 // WebGL 렌더러: 레이어마다 격자(메시)를 휘어서 입체감/볼록·오목/머리카락 흔들림을 표현한다.
 import { BLINK_SWAP, isVisible, type FaceState, type Layer, type Model } from './model'
 import type { BreathState, HairOutput, HeadState } from './physics'
+import { BONE, BONE_COUNT, UPPER_FIRST, poseBones, skinWeights, type ArmAngles } from './skeleton'
 
 const GRID = 64 // 눈 깜빡임처럼 좁은 영역도 부드럽게 휘도록 촘촘하게
 
 const VERT = `
 attribute vec2 aPos;
+attribute vec3 aSkin;    // 몸 리깅: 따라갈 뼈 두 개의 번호와 첫 번째 뼈의 비중
 uniform vec2 uRes;
-uniform vec3 uRect;      // 모델 정사각형의 화면 위치 (x, y, 한 변 길이), px
+uniform vec3 uRect;      // 그림의 화면 위치 (x, y, 가로 길이), px
+uniform float uAspect;   // 그림 세로 ÷ 가로. 아래 좌표는 모두 '가로 = 1' 단위 (세로는 0 ~ uAspect)
 uniform vec3 uCenter;    // 얼굴 중심 x, y, 반지름
 uniform vec3 uHead;      // yaw, pitch, roll (rad)
 uniform vec2 uSquash;
 uniform vec2 uBreath;    // 몸 늘어남, 머리 오르내림
-uniform float uIsHead;
+uniform float uSeg;      // 0: 머리, 1: 몸
+uniform float uRig;      // 몸 리깅을 켰으면 1
+uniform vec2 uWaist;     // 허리 관절 (몸통 원기둥 중심선)
+uniform float uBodyR;    // 몸통 원기둥 반지름
+uniform vec3 uBodyAng;   // 상체 yaw, 상체 pitch, 하체 yaw
+uniform vec4 uBoneM[${BONE_COUNT}]; // 뼈마다 회전·크기 (a, b, c, d)
+uniform vec2 uBoneT[${BONE_COUNT}]; // 뼈마다 이동
 uniform float uDepth;
 uniform float uCurve;
 uniform float uHairOn;
@@ -30,9 +39,16 @@ vec2 rot(vec2 v, float a) {
   return vec2(c * v.x - s * v.y, s * v.x + c * v.y);
 }
 
+vec2 bone(float i, vec2 p) {
+  int k = int(i + 0.5);
+  vec4 M = uBoneM[k];
+  return vec2(M.x * p.x + M.z * p.y, M.y * p.x + M.w * p.y) + uBoneT[k];
+}
+
 void main() {
   vUv = aPos;
-  vec2 m = aPos;
+  float A = uAspect;
+  vec2 m = vec2(aPos.x, aPos.y * A);
 
   // 깜빡임: 눈 영역 띠 안쪽만 세로로 누른다 (띠 밖의 코·볼터치는 그대로).
   // 위 눈꺼풀이 더 많이 내려오도록 띠 가운데보다 살짝 아래로 모은다.
@@ -48,30 +64,46 @@ void main() {
   // 머리카락/장식: 고정선에서 멀어질수록(아래 또는 위로) 크게 휘고 밀린다
   if (uHairOn > 0.5) {
     float t = uHairDir > 0.0
-      ? (m.y - uAnchorY) / max(1.0 - uAnchorY, 0.001)
+      ? (m.y - uAnchorY) / max(A - uAnchorY, 0.001)
       : (uAnchorY - m.y) / max(uAnchorY, 0.001);
     float w = pow(smoothstep(0.0, 1.0, t), 1.5);
     vec2 a = vec2(m.x, uAnchorY);
     m = a + rot(m - a, uHairAngle * w) + uHairOffset * w;
   }
 
-  // 머리: 얼굴 중심을 기준으로 한 곡면 위에 있다고 보고 회전
-  if (uIsHead > 0.5) {
+  if (uSeg < 0.5) {
+    // 머리: 얼굴 중심을 기준으로 한 구 모양 곡면 위에 있다고 보고 회전
     vec2 p = m - uCenter.xy;
     float r2 = clamp(dot(p, p) / (uCenter.z * uCenter.z), 0.0, 1.0);
     float z = uDepth + uCurve * (1.0 - r2);
     p.x = p.x * cos(uHead.x) + z * sin(uHead.x);
     p.y = p.y * cos(uHead.y) + z * sin(uHead.y);
     m = uCenter.xy + p;
+  } else if (uRig > 0.5) {
+    // 몸: 허리를 지나는 세로 원기둥 곡면 위에 있다고 보고, 얼굴 각도를 따라 조금 회전.
+    // 상체 뼈를 따르는 점일수록 상체 비율로, 하체 뼈를 따르는 점일수록 하체 비율로 돈다.
+    float upperW = (aSkin.x > ${UPPER_FIRST - 0.5} ? aSkin.z : 0.0) + (aSkin.y > ${UPPER_FIRST - 0.5} ? 1.0 - aSkin.z : 0.0);
+    float dx = m.x - uWaist.x;
+    float r2 = clamp(dx * dx / (uBodyR * uBodyR), 0.0, 1.0);
+    float z = uDepth + uCurve * (1.0 - r2);
+    float yaw = mix(uBodyAng.z, uBodyAng.x, upperW);
+    m.x = uWaist.x + dx * cos(yaw) + z * sin(yaw);
+    float dy = m.y - uWaist.y;
+    m.y = uWaist.y + dy * cos(uBodyAng.y * upperW) + z * sin(uBodyAng.y * upperW);
   }
 
-  // 호흡: 몸은 발끝 기준으로 늘어나고, 머리는 목을 따라 오르내린다
-  if (uIsHead > 0.5) m.y += uBreath.y;
-  else m.y = 1.0 + (m.y - 1.0) * (1.0 + uBreath.x);
-
-  // 캐릭터 전체: 아래쪽 가운데를 축으로 기울기 + 늘어남/납작해짐
-  vec2 pivot = vec2(0.5, 1.0);
-  m = pivot + rot((m - pivot) * uSquash, uHead.z);
+  if (uRig > 0.5) {
+    // 뼈대를 따라 움직인다 (기울기, 호흡, 팔 흔들림은 뼈 변환에 들어 있다)
+    if (uSeg < 0.5) m = bone(${BONE.head}.0, m);
+    else m = bone(aSkin.x, m) * aSkin.z + bone(aSkin.y, m) * (1.0 - aSkin.z);
+  } else {
+    // 호흡: 몸은 발끝 기준으로 늘어나고, 머리는 목을 따라 오르내린다
+    if (uSeg < 0.5) m.y += uBreath.y;
+    else m.y = A + (m.y - A) * (1.0 + uBreath.x);
+    // 캐릭터 전체: 아래쪽 가운데를 축으로 기울기 + 늘어남/납작해짐
+    vec2 feet = vec2(0.5, A);
+    m = feet + rot((m - feet) * uSquash, uHead.z);
+  }
 
   vec2 px = uRect.xy + m * uRect.z;
   gl_Position = vec4(px.x / uRes.x * 2.0 - 1.0, 1.0 - px.y / uRes.y * 2.0, 0.0, 1.0);
@@ -99,11 +131,22 @@ export interface RenderState extends FaceState {
   eyes?: Model['eyes']
   pop?: number // 눈동자 통통 배율
   mouthAmount?: number // 0~1, 있으면 벌린 입 그림을 이만큼 벌린다 (0.5배 ~ 1배)
+  aspect?: number // 그림 세로 ÷ 가로 (기본 1)
+  body?: Model['body'] // 몸 리깅 (enabled일 때만)
+  arms?: ArmAngles // 팔 흔들림
+}
+
+export interface View {
+  zoom: number // 확대 배율 (1이면 화면에 맞춤)
+  x: number // 이동 (CSS px)
+  y: number
 }
 
 export interface RendererOptions {
   layout?: 'center' | 'bottom' // 편집기: 가운데 정렬, 라이브: 아래 정렬
   onImageError?: (layer: Layer) => void
+  onImageSize?: (layer: Layer, width: number, height: number) => void
+  maxTexture?: number // 이미지 최대 크기 (확대해서 볼 때는 크게)
 }
 
 export type Renderer = NonNullable<ReturnType<typeof createRenderer>>
@@ -128,7 +171,8 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   gl.useProgram(prog)
 
   const u: Record<string, WebGLUniformLocation | null> = {}
-  for (const name of ['uRes', 'uRect', 'uCenter', 'uHead', 'uSquash', 'uBreath', 'uIsHead', 'uDepth', 'uCurve',
+  for (const name of ['uRes', 'uRect', 'uAspect', 'uCenter', 'uHead', 'uSquash', 'uBreath', 'uSeg', 'uRig', 'uWaist',
+    'uBodyR', 'uBodyAng', 'uBoneM', 'uBoneT', 'uDepth', 'uCurve',
     'uHairOn', 'uAnchorY', 'uHairDir', 'uHairOffset', 'uHairAngle', 'uTex', 'uAlpha', 'uAlphaTest', 'uEyeBand', 'uPop', 'uMouth']) {
     u[name] = gl.getUniformLocation(prog, name)
   }
@@ -148,6 +192,15 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0)
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer())
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW)
+
+  // 몸 리깅: 격자 점마다 따라갈 뼈 (관절이 바뀔 때만 다시 계산)
+  const skinBuf = gl.createBuffer()
+  gl.bindBuffer(gl.ARRAY_BUFFER, skinBuf)
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array((GRID + 1) * (GRID + 1) * 3), gl.DYNAMIC_DRAW)
+  const aSkin = gl.getAttribLocation(prog, 'aSkin')
+  gl.enableVertexAttribArray(aSkin)
+  gl.vertexAttribPointer(aSkin, 3, gl.FLOAT, false, 0, 0)
+  let skinKey = ''
 
   gl.enable(gl.BLEND)
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
@@ -188,6 +241,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   // 이 모니터에서 그려질 수 있는 최대 크기 (캐릭터 정사각형은 화면의 짧은 변을 넘지 않는다)
   function maxTextureSize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    if (options.maxTexture) return Math.min(options.maxTexture, gl.getParameter(gl.MAX_TEXTURE_SIZE))
     return Math.min(2048, gl.getParameter(gl.MAX_TEXTURE_SIZE), Math.ceil(Math.min(screen.width, screen.height) * dpr))
   }
 
@@ -226,6 +280,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         try {
           entry.mid = opaqueMid(img)
         } catch (e) {}
+        options.onImageSize?.(layer, img.naturalWidth, img.naturalHeight)
         const source = await fitImage(img)
         if (textures.get(layer.id) !== entry) {
           if (source instanceof ImageBitmap) source.close()
@@ -252,15 +307,25 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
     })
   }
 
-  // 화면 크기에 맞춰 모델 정사각형 위치 계산
+  let aspect = 1
+  let view: View = { zoom: 1, x: 0, y: 0 }
+
+  // 화면 크기에 맞춰 그림 위치 계산 (x, y, 가로 길이), 그다음 확대·이동
   function rect(): [number, number, number] {
-    const W = canvas.width, H = canvas.height
+    const W = canvas.width, H = canvas.height, A = aspect
+    let x, y, S
     if (options.layout == 'bottom') {
-      const S = Math.min(W, H)
-      return [(W - S) / 2, H - S, S]
+      S = Math.min(W, H / A)
+      x = (W - S) / 2
+      y = H - S * A
+    } else {
+      S = Math.min(W, H / A) * 0.92
+      x = (W - S) / 2
+      y = (H - S * A) / 2
     }
-    const S = Math.min(W, H) * 0.92
-    return [(W - S) / 2, (H - S) / 2, S]
+    const k = canvas.width / (canvas.clientWidth || 1)
+    const z = view.zoom
+    return [W / 2 + (x - W / 2) * z + view.x * k, H / 2 + (y - H / 2) * z + view.y * k, S * z]
   }
 
   function resize() {
@@ -290,14 +355,20 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
       return !!(t && t.ready)
     },
 
-    // CSS px 기준 모델 정사각형 위치 (편집기 오버레이용)
-    cssRect(): [number, number, number] {
+    // CSS px 기준 그림 위치 (x, y, 가로 길이, 세로 길이) — 편집기 오버레이용
+    cssRect(): [number, number, number, number] {
       const k = canvas.clientWidth / (canvas.width || 1)
       const [x, y, S] = rect()
-      return [x * k, y * k, S * k]
+      return [x * k, y * k, S * k, S * k * aspect]
+    },
+
+    setView(v: View) {
+      view = v
     },
 
     render(state: RenderState) {
+      aspect = state.aspect || 1
+      const A = aspect
       resize()
       gl.viewport(0, 0, canvas.width, canvas.height)
       gl.clearColor(0, 0, 0, 0)
@@ -307,10 +378,30 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
       gl.uniform1f(u.uAlphaTest, 0)
       gl.uniform2f(u.uRes, canvas.width, canvas.height)
       gl.uniform3f(u.uRect, ...rect())
-      gl.uniform3f(u.uCenter, state.center.x, state.center.y, state.center.r)
+      gl.uniform1f(u.uAspect, A)
+      gl.uniform3f(u.uCenter, state.center.x, state.center.y * A, state.center.r)
       gl.uniform3f(u.uHead, state.head.yaw, state.head.pitch, state.head.roll)
       gl.uniform2f(u.uSquash, ...(state.squash || [1, 1] as [number, number]))
-      gl.uniform2f(u.uBreath, state.breath ? state.breath.bodyStretch : 0, state.breath ? state.breath.headBob : 0)
+      gl.uniform2f(u.uBreath, state.breath ? state.breath.bodyStretch : 0, state.breath ? state.breath.headBob * A : 0)
+
+      // 몸 리깅: 몸은 얼굴 각도를 일정 비율로 따라가고, 기울기는 관절마다 나눠 받는다
+      const body = state.body && state.body.enabled ? state.body : null
+      gl.uniform1f(u.uRig, body ? 1 : 0)
+      if (body) {
+        const key = JSON.stringify([body.joints, body.radius, A, state.center.r])
+        if (key != skinKey) {
+          skinKey = key
+          gl.bindBuffer(gl.ARRAY_BUFFER, skinBuf)
+          gl.bufferSubData(gl.ARRAY_BUFFER, 0, skinWeights(GRID, body, A, state.center.r))
+        }
+        const f = body.follow / 100, h = state.head
+        gl.uniform2f(u.uWaist, body.joints.waist.x, body.joints.waist.y * A)
+        gl.uniform1f(u.uBodyR, Math.max(0.01, body.radius))
+        gl.uniform3f(u.uBodyAng, h.yaw * f, h.pitch * f * 0.6, h.yaw * f * 0.3)
+        const pose = poseBones(body, A, { head: h, squash: state.squash, stretch: state.breath?.bodyStretch, arms: state.arms })
+        gl.uniform4fv(u.uBoneM, pose.flatMap(t => [t[0], t[1], t[2], t[3]]))
+        gl.uniform2fv(u.uBoneT, pose.flatMap(t => [t[4], t[5]]))
+      }
 
       const blink = state.blink ?? (state.eyesClosed ? 1 : 0)
       const eyes = state.eyes || { squash: false, y: 0.4, h: 0.05 }
@@ -323,22 +414,22 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         if (!l.clip) gl.clear(gl.STENCIL_BUFFER_BIT)
         const t = textures.get(l.id)
         if (!t || !t.ready || !isVisible(l, state)) continue
-        const isHead = l.part != 'body'
-        const hair = l.hair.enabled && isHead && state.hair && state.hair.get(l.id)
-        gl.uniform1f(u.uIsHead, isHead ? 1 : 0)
+        const seg = l.part == 'head' ? 0 : 1
+        const hair = l.hair.enabled && l.part != 'body' && state.hair && state.hair.get(l.id)
+        gl.uniform1f(u.uSeg, seg)
         gl.uniform1f(u.uDepth, l.depth / 100 * 0.4)
         gl.uniform1f(u.uCurve, l.curve / 100 * 0.4)
         gl.uniform1f(u.uHairOn, hair ? 1 : 0)
-        gl.uniform1f(u.uAnchorY, l.hair.anchorY)
+        gl.uniform1f(u.uAnchorY, l.hair.anchorY * A)
         gl.uniform1f(u.uHairDir, l.hair.dir == 'up' ? -1 : 1)
         gl.uniform2f(u.uHairOffset, ...(hair ? hair.offset : [0, 0] as [number, number]))
         gl.uniform1f(u.uHairAngle, hair ? hair.angle : 0)
         // 뜬 눈은 감은 눈으로 바뀌기 전까지 점점 눌린다
         const squash = eyes.squash && l.show == 'eyesOpen' ? 1 - 0.75 * Math.min(1, blink / BLINK_SWAP) : 1
-        gl.uniform3f(u.uEyeBand, eyes.y, eyes.h, squash)
+        gl.uniform3f(u.uEyeBand, eyes.y * A, eyes.h * A, squash)
         gl.uniform1f(u.uPop, l.pop ? state.pop ?? 1 : 1)
         const a = l.show == 'mouthOpen' && state.mouthAmount !== undefined ? state.mouthAmount : 1
-        gl.uniform4f(u.uMouth, t.mid[0], t.mid[1], 0.8 + 0.2 * a, 0.5 + 0.5 * a)
+        gl.uniform4f(u.uMouth, t.mid[0], t.mid[1] * A, 0.8 + 0.2 * a, 0.5 + 0.5 * a)
         gl.uniform1f(u.uAlpha, state.focusId && state.focusId != l.id ? 0.25 : 1)
         gl.bindTexture(gl.TEXTURE_2D, t.tex)
 

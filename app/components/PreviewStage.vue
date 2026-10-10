@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { resolveSrc, type Layer } from '~/lib/model'
+import { JOINTS, resolveSrc, type JointName, type Layer } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
-import { Blinker, Head, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
+import { Arms, Blinker, Head, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
+import { BONE_LINES, mirrorOf } from '~/lib/skeleton'
 import type { Handle, MotionMode } from '~/composables/useEditor'
 
 const ed = useEditor()
 const { model, selected, preview } = ed
+const beta = useBeta()
 
 const stage = ref<HTMLCanvasElement>()
 const overlay = ref<HTMLCanvasElement>()
@@ -22,6 +24,7 @@ const MODES: [MotionMode, string, string][] = [
 const wander = new Wander()
 const blinker = new Blinker()
 const mouth = new Mouth()
+const arms = new Arms()
 let talkUntil = 0
 
 // 마이크 없이 말하는 모습 미리보기: 2.5초 동안 라이브처럼 뻐끔뻐끔
@@ -41,10 +44,14 @@ function setMode(mode: MotionMode) {
   if (mode == 'auto') wander.reset(preview.target)
 }
 
-// ---- 핸들 (얼굴 중심, 얼굴 크기, 머리카락 고정선) ----
+// 몸 리깅 관절을 보여줄지 (베타)
+const rigOn = () => beta && model.value.body.enabled && preview.showJoints
+
+// ---- 핸들 (얼굴 중심, 얼굴 크기, 머리카락 고정선, 눈 영역, 관절) ----
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
-const CURSOR: Record<Handle, string> = { center: 'move', radius: 'nwse-resize', anchor: 'ns-resize', eyes: 'ns-resize', eyesSize: 'ns-resize' }
+const cursorOf = (h: Handle) => h.startsWith('joint:') ? 'move'
+  : ({ center: 'move', radius: 'nwse-resize', anchor: 'ns-resize', eyes: 'ns-resize', eyesSize: 'ns-resize', bodyR: 'ew-resize' } as Record<string, string>)[h] || 'default'
 
 // 눈 레이어를 골랐을 때 깜빡임 영역을 보여준다
 function eyeLayer(): Layer | null {
@@ -57,69 +64,124 @@ function anchorLayer(): Layer | null {
   return l && l.hair.enabled && l.part != 'body' ? l : null
 }
 
-function pointer(e: PointerEvent) {
+function pointer(e: PointerEvent | WheelEvent) {
   const r = overlay.value!.getBoundingClientRect()
   return { x: e.clientX - r.left, y: e.clientY - r.top, w: r.width, h: r.height }
 }
 
 function hitTest(p: { x: number; y: number }): Handle | null {
   if (!renderer) return null
-  const [x, y, S] = renderer.cssRect()
+  // x, y: 그림 왼쪽 위, S: 그림 가로 길이, SH: 세로 길이 (CSS px)
+  const [x, y, S, SH] = renderer.cssRect()
+  if (rigOn()) {
+    const body = model.value.body
+    for (const name of Object.keys(JOINTS) as JointName[]) {
+      const j = body.joints[name]
+      if (Math.hypot(p.x - (x + j.x * S), p.y - (y + j.y * SH)) < 9) return `joint:${name}`
+    }
+    const w = body.joints.waist
+    if (Math.abs(Math.abs(p.x - (x + w.x * S)) - body.radius * S) < 6 && Math.abs(p.y - (y + w.y * SH)) < 40) return 'bodyR'
+  }
   const c = model.value.center
-  const d = Math.hypot(p.x - (x + c.x * S), p.y - (y + c.y * S))
+  const d = Math.hypot(p.x - (x + c.x * S), p.y - (y + c.y * SH))
   if (d < 14) return 'center'
   if (Math.abs(d - c.r * S) < 8) return 'radius'
   const l = anchorLayer()
-  if (l && Math.abs(p.y - (y + l.hair.anchorY * S)) < 8 && p.x > x && p.x < x + S) return 'anchor'
+  if (l && Math.abs(p.y - (y + l.hair.anchorY * SH)) < 8 && p.x > x && p.x < x + S) return 'anchor'
   if (eyeLayer() && p.x > x && p.x < x + S) {
     const e = model.value.eyes
-    if (Math.abs(p.y - (y + e.y * S)) < 8) return 'eyes'
-    if (Math.abs(Math.abs(p.y - (y + e.y * S)) - e.h * S) < 6) return 'eyesSize'
+    if (Math.abs(p.y - (y + e.y * SH)) < 8) return 'eyes'
+    if (Math.abs(Math.abs(p.y - (y + e.y * SH)) - e.h * SH) < 6) return 'eyesSize'
   }
   return null
 }
 
+let panning = false
+
 function onPointerDown(e: PointerEvent) {
+  // 베타: 우클릭 드래그로 화면 이동
+  if (beta && e.button == 2) {
+    panning = true
+    overlay.value!.setPointerCapture(e.pointerId)
+    return
+  }
   const h = hitTest(pointer(e))
   if (!h) return
   preview.drag = h
   overlay.value!.setPointerCapture(e.pointerId)
 }
 
+function onPointerUp() {
+  preview.drag = null
+  panning = false
+}
+
 function onPointerMove(e: PointerEvent) {
   const p = pointer(e)
+  if (panning) {
+    preview.view.x += e.movementX
+    preview.view.y += e.movementY
+    return
+  }
   if (preview.drag && renderer) {
-    const [x, y, S] = renderer.cssRect()
-    const mx = (p.x - x) / S, my = (p.y - y) / S
+    const [x, y, S, SH] = renderer.cssRect()
+    const mx = (p.x - x) / S, my = (p.y - y) / SH
     const round = (v: number) => Math.round(v * 200) / 200
     const c = model.value.center
-    if (preview.drag == 'center') {
+    const drag = preview.drag
+    if (drag.startsWith('joint:')) {
+      // 관절: 좌우 대칭이면 짝 관절도 허리 기준으로 반대편에 같이 옮긴다
+      const name = drag.slice(6) as JointName
+      const body = model.value.body
+      body.joints[name] = { x: round(clamp(mx, 0, 1)), y: round(clamp(my, 0, 1)) }
+      const pair = mirrorOf(name)
+      if (body.mirror && pair) body.joints[pair] = { x: round(clamp(2 * body.joints.waist.x - mx, 0, 1)), y: round(clamp(my, 0, 1)) }
+    } else if (drag == 'bodyR') {
+      model.value.body.radius = round(clamp(Math.abs(mx - model.value.body.joints.waist.x), 0.02, 0.5))
+    } else if (drag == 'center') {
       c.x = round(clamp(mx, 0, 1))
       c.y = round(clamp(my, 0, 1))
-    } else if (preview.drag == 'radius') {
-      c.r = round(clamp(Math.hypot(mx - c.x, my - c.y), 0.05, 0.6))
-    } else if (preview.drag == 'anchor') {
+    } else if (drag == 'radius') {
+      c.r = round(clamp(Math.hypot(p.x - (x + c.x * S), p.y - (y + c.y * SH)) / S, 0.05, 0.6))
+    } else if (drag == 'anchor') {
       const l = anchorLayer()
       if (l) l.hair.anchorY = Math.round(clamp(my, 0, 1) * 100) / 100
-    } else if (preview.drag == 'eyes') {
+    } else if (drag == 'eyes') {
       model.value.eyes.y = round(clamp(my, 0, 1))
-    } else if (preview.drag == 'eyesSize') {
+    } else if (drag == 'eyesSize') {
       model.value.eyes.h = round(clamp(Math.abs(my - model.value.eyes.y), 0.01, 0.2))
     }
     return
   }
   preview.hover = hitTest(p)
-  overlay.value!.style.cursor = preview.hover ? CURSOR[preview.hover] : 'default'
+  overlay.value!.style.cursor = preview.hover ? cursorOf(preview.hover) : 'default'
   if (preview.mode == 'mouse' && renderer) {
-    const [x, y, S] = renderer.cssRect()
+    const [x, y, S, SH] = renderer.cssRect()
     const c = model.value.center
-    preview.target = lookAt(p.x, p.y, x + c.x * S, y + c.y * S, S)
+    preview.target = lookAt(p.x, p.y, x + c.x * S, y + c.y * SH, S)
   }
 }
 
 function onPointerLeave() {
   preview.hover = null
   if (preview.mode == 'mouse') preview.target = { x: 0, y: 0 }
+}
+
+// 베타: 휠로 커서 위치를 중심으로 확대/축소
+function onWheel(e: WheelEvent) {
+  if (!beta) return
+  e.preventDefault()
+  const p = pointer(e)
+  const v = preview.view
+  const z = clamp(v.zoom * Math.exp(-e.deltaY * 0.0015), 0.2, 8)
+  const cx = p.x - p.w / 2, cy = p.y - p.h / 2
+  v.x = cx - (cx - v.x) * z / v.zoom
+  v.y = cy - (cy - v.y) * z / v.zoom
+  v.zoom = z
+}
+
+function fitView() {
+  Object.assign(preview.view, { zoom: 1, x: 0, y: 0 })
 }
 
 function drawOverlay() {
@@ -135,16 +197,17 @@ function drawOverlay() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, w, h)
   if (!renderer) return
-  const [x, y, S] = renderer.cssRect()
-  const c = toRaw(model.value).center
+  const [x, y, S, SH] = renderer.cssRect()
+  const m = toRaw(model.value)
+  const c = m.center
   const active = (handle: Handle) => preview.hover == handle || preview.drag == handle
   ctx.font = '12px Pretendard, sans-serif'
 
   // 고정선 + 그 아래(또는 위)로 갈수록 많이 흔들린다는 표시
   const l = anchorLayer()
   if (l) {
-    const ay = y + l.hair.anchorY * S
-    const end = l.hair.dir == 'up' ? y : y + S
+    const ay = y + l.hair.anchorY * SH
+    const end = l.hair.dir == 'up' ? y : y + SH
     const g = ctx.createLinearGradient(0, ay, 0, end)
     g.addColorStop(0, 'rgba(255,107,138,0)')
     g.addColorStop(1, 'rgba(255,107,138,0.15)')
@@ -164,8 +227,8 @@ function drawOverlay() {
 
   // 깜빡임 때 눌리는 눈 영역
   if (eyeLayer()) {
-    const e = toRaw(model.value).eyes
-    const ey = y + e.y * S, eh = e.h * S
+    const e = m.eyes
+    const ey = y + e.y * SH, eh = e.h * SH
     ctx.fillStyle = 'rgba(46, 204, 113, 0.08)'
     ctx.fillRect(x, ey - eh, S, eh * 2)
     ctx.strokeStyle = '#2ecc71'
@@ -187,8 +250,49 @@ function drawOverlay() {
     ctx.fillText('눈 깜빡임 영역 (이 띠 안쪽만 눌려요)', x + 6, ey - eh - 6)
   }
 
+  // 몸 리깅 뼈대: 뼈 선, 몸통 두께, 관절점
+  if (rigOn()) {
+    const J = m.body.joints
+    const at = (n: JointName) => [x + J[n].x * S, y + J[n].y * SH] as const
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.9)'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    for (const [a, b] of BONE_LINES) {
+      ctx.moveTo(...at(a))
+      ctx.lineTo(...at(b))
+    }
+    ctx.stroke()
+    // 몸통 두께: 허리 양옆 세로 점선
+    const [wx, wy] = at('waist')
+    const [, ny] = at('neck')
+    ctx.setLineDash([5, 5])
+    ctx.lineWidth = active('bodyR') ? 2.5 : 1.5
+    ctx.beginPath()
+    for (const s of [-1, 1]) {
+      ctx.moveTo(wx + s * m.body.radius * S, ny)
+      ctx.lineTo(wx + s * m.body.radius * S, wy + (wy - ny) * 0.4)
+    }
+    ctx.stroke()
+    ctx.setLineDash([])
+    for (const name of Object.keys(JOINTS) as JointName[]) {
+      const [px, py] = at(name)
+      const on = active(`joint:${name}`)
+      ctx.fillStyle = name == 'neck' || name == 'waist' ? '#f59e0b' : '#fbbf24'
+      ctx.beginPath()
+      ctx.arc(px, py, on ? 8 : 6, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = 'white'
+      ctx.lineWidth = 2
+      ctx.stroke()
+      if (on || name == 'neck' || name == 'waist') {
+        ctx.fillStyle = '#b45309'
+        ctx.fillText(JOINTS[name], px + 10, py - 8)
+      }
+    }
+  }
+
   // 얼굴 중심과 크기
-  const cx = x + c.x * S, cy = y + c.y * S
+  const cx = x + c.x * S, cy = y + c.y * SH
   ctx.strokeStyle = '#3fb5ee'
   ctx.lineWidth = active('radius') ? 2.5 : 1.5
   ctx.setLineDash([5, 5])
@@ -213,6 +317,14 @@ onMounted(() => {
   renderer = createRenderer(stage.value!, {
     layout: 'center',
     onImageError: l => ed.imageErrors.add(l.id),
+    // 베타: 그림 비율을 자동으로 읽는다 (세로로 긴 그림 지원), 확대해서 볼 수 있도록 이미지를 크게
+    onImageSize: beta
+      ? (_, w, h) => {
+          const a = Math.round(h / w * 1000) / 1000
+          if (Math.abs(a - model.value.aspect) > 0.01) model.value.aspect = a
+        }
+      : undefined,
+    maxTexture: beta ? 4096 : undefined,
   })
   if (!renderer) noGL.value = true
 
@@ -238,7 +350,9 @@ onMounted(() => {
     const h = head.state
     const b = breath(now / 1000, m.rig.breath, m.center)
 
+    if (beta) renderer?.setView(toRaw(preview.view))
     renderer?.render({
+      ...(beta ? { aspect: m.aspect, body: m.body, arms: arms.update(dt, h.roll * 0.45, now / 1000) } : {}),
       center: m.center,
       head: h,
       squash: head.squash,
@@ -273,14 +387,22 @@ onBeforeUnmount(() => {
         class="overlay"
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"
-        @pointerup="preview.drag = null"
+        @pointerup="onPointerUp"
         @pointerleave="onPointerLeave"
+        @wheel="onWheel"
+        @contextmenu.prevent
       />
       <div v-if="noGL" class="nogl">
         이 브라우저는 WebGL을 지원하지 않아요. <a href="/legacy/index.html">이전 버전 사용하기</a>
       </div>
     </div>
 
+    <div v-if="beta" class="toolbar">
+      <span class="label">보기</span>
+      <button class="toggle" title="휠로 확대/축소, 우클릭 드래그로 이동할 수 있어요" @click="fitView">화면 맞춤</button>
+      <span class="tip">{{ Math.round(preview.view.zoom * 100) }}% · 휠: 확대/축소 · 우클릭 드래그: 이동</span>
+      <label v-if="model.body.enabled" class="check"><input v-model="preview.showJoints" type="checkbox"> 관절 표시</label>
+    </div>
     <div class="toolbar">
       <span class="label">고개</span>
       <div class="seg">

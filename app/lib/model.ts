@@ -1,6 +1,13 @@
 // 페더톡 모델 데이터 (레이어 구성, 저장/불러오기, 기존 데이터 변환)
 
-const KEY = 'ftModel'
+const MAIN_KEY = 'ftModel'
+const BETA_KEY = 'ftModelBeta'
+let KEY = MAIN_KEY
+
+// 베타(/beta)는 정식판과 따로 저장한다. 업로드한 파일 저장소(IndexedDB)는 함께 쓴다.
+export function selectStorage(beta: boolean) {
+  KEY = beta ? BETA_KEY : MAIN_KEY
+}
 
 export type ShowMode = 'always' | 'eyesOpen' | 'eyesClosed' | 'mouthClosed' | 'mouthOpen'
 
@@ -22,7 +29,7 @@ export interface Layer {
   id: string
   name: string
   src: LayerSource
-  part: 'head' | 'body'
+  part: Part
   show: ShowMode
   expressions: boolean[]
   visible: boolean
@@ -33,12 +40,47 @@ export interface Layer {
   pop: boolean // 깜빡일 때 눌렸다가 통통 튀며 돌아오기 (눈동자용)
 }
 
+// head: 머리(구 모양으로 회전), body: 몸 (몸 리깅을 켜면 가까운 뼈를 자동으로 따라간다)
+export type Part = 'head' | 'body'
+
+// 관절. L/R은 화면 기준 왼쪽/오른쪽. x는 그림 가로 기준 0~1, y는 그림 세로 기준 0~1
+export const JOINTS = {
+  neck: '목', waist: '허리',
+  shoulderL: '어깨', elbowL: '팔꿈치', wristL: '손목',
+  shoulderR: '어깨', elbowR: '팔꿈치', wristR: '손목',
+  hipL: '엉덩이', kneeL: '무릎', ankleL: '발목',
+  hipR: '엉덩이', kneeR: '무릎', ankleR: '발목',
+} as const
+export type JointName = keyof typeof JOINTS
+export type Joints = Record<JointName, { x: number; y: number }>
+
+// 서 있는 전신 그림 기준의 대략적인 기본 위치 (끌어서 맞춘다)
+export function defaultJoints(): Joints {
+  return {
+    neck: { x: 0.5, y: 0.22 }, waist: { x: 0.5, y: 0.45 },
+    shoulderL: { x: 0.37, y: 0.25 }, elbowL: { x: 0.33, y: 0.38 }, wristL: { x: 0.31, y: 0.5 },
+    shoulderR: { x: 0.63, y: 0.25 }, elbowR: { x: 0.67, y: 0.38 }, wristR: { x: 0.69, y: 0.5 },
+    hipL: { x: 0.45, y: 0.53 }, kneeL: { x: 0.45, y: 0.73 }, ankleL: { x: 0.45, y: 0.93 },
+    hipR: { x: 0.55, y: 0.53 }, kneeR: { x: 0.55, y: 0.73 }, ankleR: { x: 0.55, y: 0.93 },
+  }
+}
+
+export interface BodyRig {
+  enabled: boolean
+  joints: Joints
+  radius: number // 몸통 두께 (원기둥 반지름, 가로 기준)
+  follow: number // 몸이 얼굴 각도를 따라가는 정도 (%)
+  mirror: boolean // 관절을 좌우 대칭으로 움직이기
+}
+
 export interface Model {
   version: 2
   center: { x: number; y: number; r: number }
   rig: { yaw: number; pitch: number; roll: number; bounce: number; breath: number }
   eyes: { squash: boolean; y: number; h: number } // 깜빡일 때 눈을 눌러 감기는 효과와 그 영역 (가운데 높이, 반높이)
   mouth: { animate: boolean } // 입이 열리고 닫힐 때 커졌다 작아지는 움직임 (끄면 그림만 바로 바뀜)
+  aspect: number // 그림 세로 ÷ 가로 (베타: 세로로 긴 그림 지원. 정식판은 1)
+  body: BodyRig // 몸 리깅 (베타)
   layers: Layer[]
 }
 
@@ -68,7 +110,7 @@ interface Preset {
   depth?: number
   curve?: number
   show?: ShowMode
-  part?: 'head' | 'body'
+  part?: Part
   hair?: HairParams
   clip?: boolean
   pop?: boolean
@@ -148,6 +190,8 @@ function baseModel(): Model {
     rig: { yaw: 100, pitch: 100, roll: 100, bounce: 50, breath: 50 },
     eyes: { squash: false, y: 0.4, h: 0.05 },
     mouth: { animate: true },
+    aspect: 1,
+    body: { enabled: false, joints: defaultJoints(), radius: 0.15, follow: 35, mirror: true },
     layers: [],
   }
 }
@@ -191,6 +235,8 @@ export function normalizeModel(raw: any): Model {
   m.rig = { ...base.rig, ...raw.rig }
   m.eyes = { ...base.eyes, ...raw.eyes }
   m.mouth = { ...base.mouth, ...raw.mouth }
+  m.body = { ...base.body, ...raw.body }
+  m.body.joints = { ...base.body.joints, ...raw.body?.joints }
   m.layers = (raw.layers || []).map((l: any) => {
     const d = newLayer('blank')
     const layer: Layer = {
@@ -206,7 +252,8 @@ export function normalizeModel(raw: any): Model {
 }
 
 export function loadModel(): Model {
-  const raw = localStorage.getItem(KEY)
+  // 베타를 처음 열면 정식판 캐릭터를 복사해서 시작
+  const raw = localStorage.getItem(KEY) || (KEY == BETA_KEY ? localStorage.getItem(MAIN_KEY) : null)
   let m: Model | null = null
   if (raw) {
     try {
@@ -279,7 +326,16 @@ export function deleteFile(key: string) {
 
 // 사용하지 않는 파일 정리
 export async function cleanupFiles(model: Model) {
-  const used = new Set(model.layers.filter(l => l.src.type == 'file').map(l => l.src.value))
+  // 정식판과 베타가 파일 저장소를 함께 쓰므로, 양쪽에서 쓰는 파일을 모두 남긴다
+  const all = [model]
+  for (const key of [MAIN_KEY, BETA_KEY]) {
+    if (key == KEY) continue
+    try {
+      const other = localStorage.getItem(key)
+      if (other) all.push(JSON.parse(other))
+    } catch (e) {}
+  }
+  const used = new Set(all.flatMap(m => (m.layers || []).filter(l => l.src?.type == 'file').map(l => l.src.value)))
   const keys = await tx('readonly', s => s.getAllKeys())
   await Promise.all(keys.map(String).filter(k => !used.has(k)).map(deleteFile))
 }
