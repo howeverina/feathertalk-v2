@@ -1,13 +1,12 @@
 // WebGL 렌더러: 레이어마다 격자(메시)를 휘어서 입체감/볼록·오목/머리카락 흔들림을 표현한다.
 import { BLINK_SWAP, isVisible, type FaceState, type Layer, type Model } from './model'
 import type { BreathState, HairOutput, HeadState } from './physics'
-import { BONE, BONE_COUNT, UPPER_FIRST, poseBones, skinWeights, type ArmAngles } from './skeleton'
+import { BONE, BONE_COUNT, UPPER_FIRST, nearestBone, poseBones, type ArmAngles } from './skeleton'
 
 const GRID = 64 // 눈 깜빡임처럼 좁은 영역도 부드럽게 휘도록 촘촘하게
 
 const VERT = `
 attribute vec2 aPos;
-attribute vec3 aSkin;    // 몸 리깅: 따라갈 뼈 두 개의 번호와 첫 번째 뼈의 비중
 uniform vec2 uRes;
 uniform vec3 uRect;      // 그림의 화면 위치 (x, y, 가로 길이), px
 uniform float uAspect;   // 그림 세로 ÷ 가로. 아래 좌표는 모두 '가로 = 1' 단위 (세로는 0 ~ uAspect)
@@ -17,6 +16,7 @@ uniform vec2 uSquash;
 uniform vec2 uBreath;    // 몸 늘어남, 머리 오르내림
 uniform float uSeg;      // 0: 머리, 1: 몸
 uniform float uRig;      // 몸 리깅을 켰으면 1
+uniform float uLayerBone; // 몸 리깅: 이 레이어가 통째로 따라가는 뼈 번호
 uniform vec2 uWaist;     // 허리 관절 (몸통 원기둥 중심선)
 uniform float uBodyR;    // 몸통 원기둥 반지름
 uniform vec3 uBodyAng;   // 상체 yaw, 상체 pitch, 하체 yaw
@@ -81,8 +81,8 @@ void main() {
     m = uCenter.xy + p;
   } else if (uRig > 0.5) {
     // 몸: 허리를 지나는 세로 원기둥 곡면 위에 있다고 보고, 얼굴 각도를 따라 조금 회전.
-    // 상체 뼈를 따르는 점일수록 상체 비율로, 하체 뼈를 따르는 점일수록 하체 비율로 돈다.
-    float upperW = (aSkin.x > ${UPPER_FIRST - 0.5} ? aSkin.z : 0.0) + (aSkin.y > ${UPPER_FIRST - 0.5} ? 1.0 - aSkin.z : 0.0);
+    // 상체 뼈에 붙은 파츠는 상체 비율로, 하체 뼈에 붙은 파츠는 하체 비율로 돈다.
+    float upperW = uLayerBone > ${UPPER_FIRST - 0.5} ? 1.0 : 0.0;
     float dx = m.x - uWaist.x;
     float r2 = clamp(dx * dx / (uBodyR * uBodyR), 0.0, 1.0);
     float z = uDepth + uCurve * (1.0 - r2);
@@ -95,7 +95,7 @@ void main() {
   if (uRig > 0.5) {
     // 뼈대를 따라 움직인다 (기울기, 호흡, 팔 흔들림은 뼈 변환에 들어 있다)
     if (uSeg < 0.5) m = bone(${BONE.head}.0, m);
-    else m = bone(aSkin.x, m) * aSkin.z + bone(aSkin.y, m) * (1.0 - aSkin.z);
+    else m = bone(uLayerBone, m);
   } else {
     // 호흡: 몸은 발끝 기준으로 늘어나고, 머리는 목을 따라 오르내린다
     if (uSeg < 0.5) m.y += uBreath.y;
@@ -171,7 +171,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   gl.useProgram(prog)
 
   const u: Record<string, WebGLUniformLocation | null> = {}
-  for (const name of ['uRes', 'uRect', 'uAspect', 'uCenter', 'uHead', 'uSquash', 'uBreath', 'uSeg', 'uRig', 'uWaist',
+  for (const name of ['uRes', 'uRect', 'uAspect', 'uCenter', 'uHead', 'uSquash', 'uBreath', 'uSeg', 'uRig', 'uLayerBone', 'uWaist',
     'uBodyR', 'uBodyAng', 'uBoneM', 'uBoneT', 'uDepth', 'uCurve',
     'uHairOn', 'uAnchorY', 'uHairDir', 'uHairOffset', 'uHairAngle', 'uTex', 'uAlpha', 'uAlphaTest', 'uEyeBand', 'uPop', 'uMouth']) {
     u[name] = gl.getUniformLocation(prog, name)
@@ -193,37 +193,30 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer())
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW)
 
-  // 몸 리깅: 격자 점마다 따라갈 뼈 (관절이 바뀔 때만 다시 계산)
-  const skinBuf = gl.createBuffer()
-  gl.bindBuffer(gl.ARRAY_BUFFER, skinBuf)
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array((GRID + 1) * (GRID + 1) * 3), gl.DYNAMIC_DRAW)
-  const aSkin = gl.getAttribLocation(prog, 'aSkin')
-  gl.enableVertexAttribArray(aSkin)
-  gl.vertexAttribPointer(aSkin, 3, gl.FLOAT, false, 0, 0)
-  let skinKey = ''
 
   gl.enable(gl.BLEND)
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
   gl.uniform1i(u.uTex, 0)
 
-  const textures = new Map<string, { key: string; tex: WebGLTexture | null; ready: boolean; mid: [number, number] }>()
+  const textures = new Map<string, { key: string; tex: WebGLTexture | null; ready: boolean; mid: [number, number]; centroid: [number, number] }>()
 
-  // 그림에서 불투명한 부분의 가운데 (0~1). 입을 벌릴 때 축으로 쓴다.
+  // 그림에서 불투명한 부분의 가운데(위아래·좌우 끝의 중간)와 무게중심 (0~1).
+  // 가운데는 입을 벌릴 때 축으로, 무게중심은 몸 리깅에서 붙을 뼈를 고를 때 쓴다.
   // 작게 줄여서 CPU 캔버스로 한 번만 계산한다.
   let probe: CanvasRenderingContext2D | null = null
-  function opaqueMid(img: HTMLImageElement): [number, number] {
+  function opaqueInfo(img: HTMLImageElement): { mid: [number, number]; centroid: [number, number] } {
     const N = 128
     if (!probe) {
       const c = document.createElement('canvas')
       c.width = c.height = N
       probe = c.getContext('2d', { willReadFrequently: true })
     }
-    if (!probe) return [0.5, 0.5]
+    if (!probe) return { mid: [0.5, 0.5], centroid: [0.5, 0.5] }
     probe.clearRect(0, 0, N, N)
     probe.drawImage(img, 0, 0, N, N)
     const d = probe.getImageData(0, 0, N, N).data
-    let x0 = N, y0 = N, x1 = -1, y1 = -1
+    let x0 = N, y0 = N, x1 = -1, y1 = -1, sx = 0, sy = 0, n = 0
     for (let y = 0; y < N; y++) {
       for (let x = 0; x < N; x++) {
         if (d[(y * N + x) * 4 + 3]! > 40) {
@@ -231,10 +224,14 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
           if (x > x1) x1 = x
           if (y < y0) y0 = y
           y1 = y
+          sx += x
+          sy += y
+          n++
         }
       }
     }
-    return x1 < 0 ? [0.5, 0.5] : [(x0 + x1 + 1) / 2 / N, (y0 + y1 + 1) / 2 / N]
+    if (x1 < 0) return { mid: [0.5, 0.5], centroid: [0.5, 0.5] }
+    return { mid: [(x0 + x1 + 1) / 2 / N, (y0 + y1 + 1) / 2 / N], centroid: [(sx / n + 0.5) / N, (sy / n + 0.5) / N] }
   }
   let layers: Layer[] = []
 
@@ -269,7 +266,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
     const cur = textures.get(layer.id)
     if (cur && cur.key == key) return
     if (cur && cur.tex) gl.deleteTexture(cur.tex)
-    const entry = { key, tex: null as WebGLTexture | null, ready: false, mid: [0.5, 0.5] as [number, number] }
+    const entry = { key, tex: null as WebGLTexture | null, ready: false, mid: [0.5, 0.5] as [number, number], centroid: [0.5, 0.5] as [number, number] }
     textures.set(layer.id, entry)
     if (!layer.src.value) return
     resolveSrc(layer).then(url => {
@@ -278,7 +275,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
       if (!url.startsWith('blob:') && !url.startsWith('data:')) img.crossOrigin = 'anonymous'
       img.onload = async () => {
         try {
-          entry.mid = opaqueMid(img)
+          Object.assign(entry, opaqueInfo(img))
         } catch (e) {}
         options.onImageSize?.(layer, img.naturalWidth, img.naturalHeight)
         const source = await fitImage(img)
@@ -308,6 +305,13 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   }
 
   let aspect = 1
+  let lastBody: Model['body'] | null = null, lastHeadR = 0.25
+
+  // 몸 레이어가 통째로 따라갈 뼈 (그림 무게중심에서 가장 가까운 뼈)
+  function boneOf(l: Layer, t: { centroid: [number, number] }) {
+    if (!lastBody) return BONE.spine
+    return nearestBone({ x: t.centroid[0], y: t.centroid[1] * aspect }, lastBody, aspect, lastHeadR)
+  }
   let view: View = { zoom: 1, x: 0, y: 0 }
 
   // 화면 크기에 맞춰 그림 위치 계산 (x, y, 가로 길이), 그다음 확대·이동
@@ -362,6 +366,13 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
       return [x * k, y * k, S * k, S * k * aspect]
     },
 
+    // 몸 리깅: 레이어가 붙은 뼈 번호 (머리 레이어, 리깅 꺼짐, 아직 안 불러왔으면 null)
+    boneOf(l: Layer): number | null {
+      const t = textures.get(l.id)
+      if (!lastBody || l.part == 'head' || !t || !t.ready) return null
+      return boneOf(l, t)
+    },
+
     setView(v: View) {
       view = v
     },
@@ -386,18 +397,14 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
 
       // 몸 리깅: 몸은 얼굴 각도를 일정 비율로 따라가고, 기울기는 관절마다 나눠 받는다
       const body = state.body && state.body.enabled ? state.body : null
+      lastBody = body
+      lastHeadR = state.center.r
       gl.uniform1f(u.uRig, body ? 1 : 0)
       if (body) {
-        const key = JSON.stringify([body.joints, body.radius, A, state.center.r])
-        if (key != skinKey) {
-          skinKey = key
-          gl.bindBuffer(gl.ARRAY_BUFFER, skinBuf)
-          gl.bufferSubData(gl.ARRAY_BUFFER, 0, skinWeights(GRID, body, A, state.center.r))
-        }
         const f = body.follow / 100, h = state.head
         gl.uniform2f(u.uWaist, body.joints.waist.x, body.joints.waist.y * A)
         gl.uniform1f(u.uBodyR, Math.max(0.01, body.radius))
-        gl.uniform3f(u.uBodyAng, h.yaw * f, h.pitch * f * 0.6, h.yaw * f * 0.3)
+        gl.uniform3f(u.uBodyAng, h.yaw * f * 1.4, h.pitch * f * 0.8, h.yaw * f * 0.4)
         const pose = poseBones(body, A, { head: h, squash: state.squash, stretch: state.breath?.bodyStretch, arms: state.arms })
         gl.uniform4fv(u.uBoneM, pose.flatMap(t => [t[0], t[1], t[2], t[3]]))
         gl.uniform2fv(u.uBoneT, pose.flatMap(t => [t[4], t[5]]))
@@ -415,6 +422,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         const t = textures.get(l.id)
         if (!t || !t.ready || !isVisible(l, state)) continue
         const seg = l.part == 'head' ? 0 : 1
+        if (body && seg) gl.uniform1f(u.uLayerBone, boneOf(l, t))
         const hair = l.hair.enabled && l.part != 'body' && state.hair && state.hair.get(l.id)
         gl.uniform1f(u.uSeg, seg)
         gl.uniform1f(u.uDepth, l.depth / 100 * 0.4)

@@ -1,4 +1,4 @@
-// 몸 리깅 뼈대: 관절 위치로 뼈를 만들고, 그림의 각 점이 어느 뼈를 따라갈지 자동으로 정한다.
+// 몸 리깅 뼈대: 관절 위치로 뼈를 만들고, 파츠(레이어)마다 어느 뼈를 따라갈지 자동으로 정한다.
 // 좌표는 모두 '그림 가로 = 1' 단위 (세로는 0 ~ aspect).
 import type { BodyRig, JointName, Joints } from './model'
 import type { HeadState } from './physics'
@@ -50,7 +50,7 @@ function distToSegment(p: P, a: P, b: P) {
   return Math.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t)
 }
 
-// 뼈마다 선분과 굵기. 굵기 안쪽은 그 뼈에 딱 붙는다 (몸통 가장자리가 팔에 붙지 않도록).
+// 뼈마다 선분과 굵기 (파츠 중심이 굵기 안쪽이면 그 뼈로)
 function bones(j: Record<JointName, P>, radius: number, headR: number) {
   const hip = mid(j.hipL, j.hipR)
   const headTop = { x: j.neck.x, y: j.neck.y - headR * 2.2 }
@@ -65,31 +65,24 @@ function bones(j: Record<JointName, P>, radius: number, headR: number) {
   ] as const
 }
 
-// 격자 점마다 (뼈1, 뼈2, 뼈1 비중). 가장 가까운 뼈 두 개를 거리에 따라 섞는다.
-export function skinWeights(grid: number, rig: BodyRig, aspect: number, headR: number): Float32Array {
-  const list = bones(pts(rig.joints, aspect), rig.radius, headR)
-  const out = new Float32Array((grid + 1) * (grid + 1) * 3)
-  let o = 0
-  for (let jy = 0; jy <= grid; jy++) {
-    for (let ix = 0; ix <= grid; ix++) {
-      const p = { x: ix / grid, y: (jy / grid) * aspect }
-      let b0 = 0, d0 = Infinity, b1 = 0, d1 = Infinity
-      for (const [id, a, b, r] of list) {
-        const d = Math.max(0, distToSegment(p, a, b) - r)
-        if (d < d0) {
-          b1 = b0; d1 = d0
-          b0 = id; d0 = d
-        } else if (d < d1) {
-          b1 = id; d1 = d
-        }
-      }
-      const f0 = 1 / (d0 + 0.01) ** 3, f1 = 1 / (d1 + 0.01) ** 3
-      out[o++] = b0
-      out[o++] = b1
-      out[o++] = f0 / (f0 + f1)
+// 파츠(레이어) 하나를 통째로 붙일 뼈: 그림이 있는 부분의 중심(가로 = 1 단위)에서 가장 가까운 뼈
+export function nearestBone(p: P, rig: BodyRig, aspect: number, headR: number): number {
+  let best: number = BONE.spine, bestD = Infinity
+  for (const [id, a, b, r] of bones(pts(rig.joints, aspect), rig.radius, headR)) {
+    const d = Math.max(0, distToSegment(p, a, b) - r)
+    if (d < bestD) {
+      bestD = d
+      best = id
     }
   }
-  return out
+  return best
+}
+
+// 레이어 목록에 보여줄 뼈 이름 (L/R은 화면 기준)
+export const BONE_NAMES: Record<number, string> = {
+  [BONE.pelvis]: '몸 아래쪽', [BONE.spine]: '몸 위쪽', [BONE.head]: '머리',
+  [BONE.thighL]: '왼다리 위쪽', [BONE.shinL]: '왼다리 아래쪽', [BONE.thighR]: '오른다리 위쪽', [BONE.shinR]: '오른다리 아래쪽',
+  [BONE.upperArmL]: '왼팔 위쪽', [BONE.foreArmL]: '왼팔 아래쪽', [BONE.upperArmR]: '오른팔 위쪽', [BONE.foreArmR]: '오른팔 아래쪽',
 }
 
 export interface ArmAngles { upperL: number; foreL: number; upperR: number; foreR: number }
@@ -149,7 +142,7 @@ export function poseBones(rig: BodyRig, aspect: number, input: PoseInput): Aff[]
   const hipC = mid(j.hipL, j.hipR)
 
   // 골반: 고개를 돌리거나 기울인 반대쪽으로 살짝 밀리고, 그만큼(+ 고개를 숙이면 조금 더) 내려앉는다
-  const dx = -(h.yaw * 0.5 + h.roll * 0.8) * f * 0.15 * sway
+  const dx = -(h.yaw * 0.5 + h.roll * 0.8) * f * 0.25 * sway
   const dy = Math.abs(dx) * 1.5 + Math.max(0, h.pitch) * f * 0.06 * sway
   const pelvis = mul(translate(dx, dy), rotAbout(hipC, h.roll * ROLL_SHARE.lower))
   out[BONE.root] = pelvis

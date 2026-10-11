@@ -2,7 +2,7 @@
 import { JOINTS, resolveSrc, type JointName, type Layer } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
 import { Arms, Blinker, Head, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
-import { BONE_LINES, mirrorOf } from '~/lib/skeleton'
+import { BONE_LINES, BONE_NAMES, mirrorOf } from '~/lib/skeleton'
 import { createPinch } from '~/lib/gesture'
 import type { Handle, MotionMode } from '~/composables/useEditor'
 
@@ -346,6 +346,17 @@ onMounted(() => {
   const head = new Head()
   const hair = new HairSystem()
   let last = performance.now()
+  let frameNo = 0
+
+  // 베타: 몸 레이어가 어느 뼈에 붙었는지 레이어 목록에 보여준다 (가끔만 확인)
+  function updateLayerBones() {
+    const next: Record<string, string> = {}
+    for (const l of toRaw(model.value).layers) {
+      const b = renderer?.boneOf(l)
+      if (b != null) next[l.id] = BONE_NAMES[b] || ''
+    }
+    if (JSON.stringify(next) != JSON.stringify(preview.layerBones)) preview.layerBones = next
+  }
 
   function frame(now: number) {
     const dt = (now - last) / 1000
@@ -376,6 +387,7 @@ onMounted(() => {
       focusId: preview.focus ? selected.value?.id : null,
     })
     drawOverlay()
+    if (beta && ++frameNo % 20 == 0) updateLayerBones()
     raf = requestAnimationFrame(frame)
   }
   raf = requestAnimationFrame(frame)

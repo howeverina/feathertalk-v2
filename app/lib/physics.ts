@@ -154,10 +154,10 @@ export class Arms {
     this.acc += Math.min(dt, 0.1)
     while (this.acc >= STEP) {
       this.acc -= STEP
-      spring(this.upper, -bodyRoll * 0.85, 40, 2 * 0.3 * Math.sqrt(40), STEP)
-      spring(this.fore, -this.upper.x * 0.35, 25, 2 * 0.3 * Math.sqrt(25), STEP)
+      spring(this.upper, -bodyRoll * 1.3, 40, 2 * 0.22 * Math.sqrt(40), STEP)
+      spring(this.fore, -this.upper.x * 0.5, 25, 2 * 0.22 * Math.sqrt(25), STEP)
     }
-    const sway = Math.sin(t * 1.6) * 0.012 // 숨 쉴 때 살짝
+    const sway = Math.sin(t * 1.6) * 0.02 // 숨 쉴 때 살짝
     return {
       upperL: this.upper.x - sway, foreL: this.fore.x,
       upperR: this.upper.x + sway, foreR: this.fore.x,

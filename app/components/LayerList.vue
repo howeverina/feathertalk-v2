@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, Copy, CornerLeftDown, Eye, EyeOff, GripVertical
 import { PRESETS, SHOW_OPTIONS, type Layer, type PresetKey } from '~/lib/model'
 
 const ed = useEditor()
-const { model, selectedId, selected, imageErrors } = ed
+const { model, selectedId, selected, imageErrors, preview } = ed
 const menuOpen = ref(false)
 const presets = Object.entries(PRESETS) as [PresetKey, (typeof PRESETS)[PresetKey]][]
 const showLabel = Object.fromEntries(SHOW_OPTIONS)
@@ -13,7 +13,7 @@ function badges(l: Layer) {
   if (imageErrors.has(l.id)) out.push(['이미지 오류', 'err'])
   else if (!l.src.value) out.push(['이미지 없음', ''])
   if (l.clip) out.push(['클리핑', 'clip'])
-  if (l.part == 'body') out.push(['몸', ''])
+  if (l.part == 'body') out.push([preview.layerBones[l.id] ? `뼈: ${preview.layerBones[l.id]}` : '몸', preview.layerBones[l.id] ? 'bone' : ''])
   if (l.show != 'always') out.push([showLabel[l.show]!, ''])
   if (l.hair.enabled && l.part != 'body') out.push([l.hair.dir == 'up' ? '장식 물리' : '머리카락', 'hair'])
   return out
@@ -185,6 +185,11 @@ li.drag-over {
 .badge.hair {
   background: #ffe8ee;
   color: var(--hair);
+}
+
+.badge.bone {
+  background: #fef3c7;
+  color: #b45309;
 }
 
 .badge.err {

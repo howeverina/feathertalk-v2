@@ -25,6 +25,7 @@ function createEditor(beta: boolean) {
     hover: null as Handle | null,
     view: { zoom: 1, x: 0, y: 0 }, // 베타: 미리보기 확대·이동
     showJoints: true, // 베타: 관절 표시
+    layerBones: {} as Record<string, string>, // 베타: 몸 레이어가 자동으로 붙은 뼈 이름
   })
 
   // ---- 저장 ----
