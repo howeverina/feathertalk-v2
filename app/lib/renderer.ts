@@ -22,6 +22,7 @@ uniform float uBodyR;    // 몸통 원기둥 반지름
 uniform vec3 uBodyAng;   // 상체 yaw, 상체 pitch, 하체 yaw
 uniform vec4 uBoneM[${BONE_COUNT}]; // 뼈마다 회전·크기 (a, b, c, d)
 uniform vec2 uBoneT[${BONE_COUNT}]; // 뼈마다 이동
+uniform float uBoneZ[${BONE_COUNT}]; // 뼈마다 카메라 쪽으로 나온 정도 (양다리 레이어 안에서 앞뒤 정하기)
 uniform float uDepth;
 uniform float uCurve;
 uniform float uHairOn;
@@ -106,7 +107,8 @@ void main() {
   }
 
   vec2 px = uRect.xy + m * uRect.z;
-  gl_Position = vec4(px.x / uRes.x * 2.0 - 1.0, 1.0 - px.y / uRes.y * 2.0, 0.0, 1.0);
+  float z = uRig > 0.5 && uSeg > 0.5 ? -uBoneZ[int(aBone + 0.5)] : 0.0;
+  gl_Position = vec4(px.x / uRes.x * 2.0 - 1.0, 1.0 - px.y / uRes.y * 2.0, z, 1.0);
 }`
 
 const FRAG = `
@@ -160,7 +162,7 @@ function compile(gl: WebGLRenderingContext, type: number, src: string) {
 }
 
 export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptions = {}) {
-  const gl = canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: true, stencil: true })
+  const gl = canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: true, stencil: true, depth: true })
   if (!gl) return null
 
   const prog = gl.createProgram()!
@@ -173,7 +175,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
 
   const u: Record<string, WebGLUniformLocation | null> = {}
   for (const name of ['uRes', 'uRect', 'uAspect', 'uCenter', 'uHead', 'uSquash', 'uBreath', 'uSeg', 'uRig', 'uWaist',
-    'uBodyR', 'uBodyAng', 'uBoneM', 'uBoneT', 'uDepth', 'uCurve',
+    'uBodyR', 'uBodyAng', 'uBoneM', 'uBoneT', 'uBoneZ', 'uDepth', 'uCurve',
     'uHairOn', 'uAnchorY', 'uHairDir', 'uHairOffset', 'uHairAngle', 'uTex', 'uAlpha', 'uAlphaTest', 'uEyeBand', 'uPop', 'uMouth']) {
     u[name] = gl.getUniformLocation(prog, name)
   }
@@ -433,8 +435,9 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         gl.uniform1f(u.uBodyR, Math.max(0.01, body.radius))
         gl.uniform3f(u.uBodyAng, h.yaw * f * 1.4, h.pitch * f * 0.8, h.yaw * f * 0.4)
         const pose = poseBones(body, A, { head: h, squash: state.squash, stretch: state.breath?.bodyStretch, arms: state.arms })
-        gl.uniform4fv(u.uBoneM, pose.flatMap(t => [t[0], t[1], t[2], t[3]]))
-        gl.uniform2fv(u.uBoneT, pose.flatMap(t => [t[4], t[5]]))
+        gl.uniform4fv(u.uBoneM, pose.bones.flatMap(t => [t[0], t[1], t[2], t[3]]))
+        gl.uniform2fv(u.uBoneT, pose.bones.flatMap(t => [t[4], t[5]]))
+        gl.uniform1fv(u.uBoneZ, pose.depth)
       }
 
       const blink = state.blink ?? (state.eyesClosed ? 1 : 0)
@@ -475,7 +478,20 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
           gl.stencilFunc(gl.EQUAL, 1, 0xff)
           gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
         }
+        // 양팔/양다리 레이어: 이 레이어 안에서만 깊이를 비교해 더 굽은 쪽이 앞에 오게.
+        // 투명한 곳은 깊이를 남기지 않아서 앞쪽 빈 공간이 뒤를 가리지 않는다.
+        const pair = !!body && seg == 1 && t.bone.id < 0
+        if (pair) {
+          gl.clear(gl.DEPTH_BUFFER_BIT)
+          gl.enable(gl.DEPTH_TEST)
+          gl.depthFunc(gl.LESS)
+          gl.uniform1f(u.uAlphaTest, 0.02)
+        }
         gl.drawElements(gl.TRIANGLES, idx.length, gl.UNSIGNED_SHORT, 0)
+        if (pair) {
+          gl.disable(gl.DEPTH_TEST)
+          gl.uniform1f(u.uAlphaTest, 0)
+        }
         gl.disable(gl.STENCIL_TEST)
 
         // 기준 레이어의 그림 영역을 스텐실에 기록 (색은 안 그림)
