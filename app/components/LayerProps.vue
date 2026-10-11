@@ -2,6 +2,7 @@
 import { SHOW_OPTIONS } from '~/lib/model'
 
 const ed = useEditor()
+const beta = useBeta()
 const { selected, imageErrors } = ed
 
 const signed = (v: number) => (v > 0 ? '+' : '') + v
@@ -154,6 +155,10 @@ function toggleAll() {
         <span>흔들림 물리</span>
       </label>
       <p class="desc">켜면 고개를 움직일 때 끝부분이 관성으로 뒤따라 출렁이고, 고개를 기울여도 원래 방향(아래 또는 위)을 유지하려 해요.</p>
+      <p v-if="selected.part == 'body'" class="desc">
+        <template v-if="beta">몸 레이어도 흔들 수 있어요 (스커트·코트 자락·꼬리 등). 고정선은 허리나 꼬리가 붙은 높이에 맞춰 주세요. 몸 리깅을 켰다면 붙은 뼈를 따라가면서 끝자락이 팔랑거려요.</template>
+        <template v-else>몸 레이어의 흔들림은 베타(/beta)에서 먼저 시험 중이에요. 정식판에서는 머리 레이어만 흔들려요.</template>
+      </p>
       <div v-if="selected.hair.enabled" class="hair-fields">
         <div class="row dir-row">
           <span class="dir-label">흔들리는 쪽</span>

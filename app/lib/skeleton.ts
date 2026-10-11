@@ -65,17 +65,33 @@ function bones(j: Record<JointName, P>, radius: number, headR: number) {
   ] as const
 }
 
-// 파츠(레이어) 하나를 통째로 붙일 뼈: 그림이 있는 부분의 중심(가로 = 1 단위)에서 가장 가까운 뼈
-export function nearestBone(p: P, rig: BodyRig, aspect: number, headR: number): number {
-  let best: number = BONE.spine, bestD = Infinity
-  for (const [id, a, b, r] of bones(pts(rig.joints, aspect), rig.radius, headR)) {
-    const d = Math.max(0, distToSegment(p, a, b) - r)
-    if (d < bestD) {
-      bestD = d
-      best = id
+// 파츠(레이어) 하나를 통째로 붙일 뼈. 그림이 있는 점들(가로 = 1 단위)이 저마다 가장 가까운 뼈에 투표하고,
+// 가장 많이 받은 뼈로 정한다. 단, 양쪽 다리(또는 양팔)에 걸친 파츠는 — 스커트처럼 — 공통 부모 뼈로.
+const SIDES = [
+  { left: [BONE.thighL, BONE.shinL], right: [BONE.thighR, BONE.shinR], parent: BONE.pelvis },
+  { left: [BONE.upperArmL, BONE.foreArmL], right: [BONE.upperArmR, BONE.foreArmR], parent: BONE.spine },
+]
+
+export function boneForPart(points: P[], rig: BodyRig, aspect: number, headR: number): number {
+  if (!points.length) return BONE.spine
+  const list = bones(pts(rig.joints, aspect), rig.radius, headR)
+  const votes = new Array(BONE_COUNT).fill(0)
+  for (const p of points) {
+    let best = 0, bestD = Infinity
+    for (const [id, a, b, r] of list) {
+      const d = Math.max(0, distToSegment(p, a, b) - r)
+      if (d < bestD) {
+        bestD = d
+        best = id
+      }
     }
+    votes[best]++
   }
-  return best
+  const share = (ids: readonly number[]) => ids.reduce((s, i) => s + votes[i], 0) / points.length
+  for (const s of SIDES) {
+    if (share(s.left) >= 0.2 && share(s.right) >= 0.2) return s.parent
+  }
+  return votes.indexOf(Math.max(...votes))
 }
 
 // 레이어 목록에 보여줄 뼈 이름 (L/R은 화면 기준)

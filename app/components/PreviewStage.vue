@@ -62,7 +62,7 @@ function eyeLayer(): Layer | null {
 
 function anchorLayer(): Layer | null {
   const l = selected.value
-  return l && l.hair.enabled && l.part != 'body' ? l : null
+  return l && l.hair.enabled && (l.part != 'body' || beta) ? l : null
 }
 
 function pointer(e: PointerEvent | WheelEvent) {
@@ -383,7 +383,7 @@ onMounted(() => {
       pop: pupilPop(blinker, now),
       eyes: m.eyes,
       ...mouthState(mouth, dt, preview.mouthOpen || (now < talkUntil && now % 400 >= 200), m.mouth.animate),
-      hair: hair.update(dt, m.layers, h, now / 1000, b.hairLag),
+      hair: hair.update(dt, m.layers, h, now / 1000, b.hairLag, beta),
       focusId: preview.focus ? selected.value?.id : null,
     })
     drawOverlay()

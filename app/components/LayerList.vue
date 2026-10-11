@@ -4,6 +4,7 @@ import { PRESETS, SHOW_OPTIONS, type Layer, type PresetKey } from '~/lib/model'
 
 const ed = useEditor()
 const { model, selectedId, selected, imageErrors, preview } = ed
+const beta = useBeta()
 const menuOpen = ref(false)
 const presets = Object.entries(PRESETS) as [PresetKey, (typeof PRESETS)[PresetKey]][]
 const showLabel = Object.fromEntries(SHOW_OPTIONS)
@@ -15,7 +16,7 @@ function badges(l: Layer) {
   if (l.clip) out.push(['클리핑', 'clip'])
   if (l.part == 'body') out.push([preview.layerBones[l.id] ? `뼈: ${preview.layerBones[l.id]}` : '몸', preview.layerBones[l.id] ? 'bone' : ''])
   if (l.show != 'always') out.push([showLabel[l.show]!, ''])
-  if (l.hair.enabled && l.part != 'body') out.push([l.hair.dir == 'up' ? '장식 물리' : '머리카락', 'hair'])
+  if (l.hair.enabled && (l.part != 'body' || beta)) out.push([l.hair.dir == 'up' ? '장식 물리' : l.part == 'body' ? '흔들림 물리' : '머리카락', 'hair'])
   return out
 }
 

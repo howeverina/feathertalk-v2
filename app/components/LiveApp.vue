@@ -282,7 +282,7 @@ onMounted(() => {
       eyes: model.eyes,
       // 말하는 동안 일정한 간격으로 뻐끔뻐끔, 열리고 닫힐 때 움직임
       ...mouthState(mouth, dt, isTalking && now % 400 >= 200, model.mouth.animate),
-      hair: hair.update(dt, model.layers, h, now / 1000, b.hairLag),
+      hair: hair.update(dt, model.layers, h, now / 1000, b.hairLag, beta),
     })
   }
   raf = requestAnimationFrame(frame)

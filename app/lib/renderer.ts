@@ -1,7 +1,7 @@
 // WebGL 렌더러: 레이어마다 격자(메시)를 휘어서 입체감/볼록·오목/머리카락 흔들림을 표현한다.
 import { BLINK_SWAP, isVisible, type FaceState, type Layer, type Model } from './model'
 import type { BreathState, HairOutput, HeadState } from './physics'
-import { BONE, BONE_COUNT, UPPER_FIRST, nearestBone, poseBones, type ArmAngles } from './skeleton'
+import { BONE, BONE_COUNT, UPPER_FIRST, boneForPart, poseBones, type ArmAngles } from './skeleton'
 
 const GRID = 64 // 눈 깜빡임처럼 좁은 영역도 부드럽게 휘도록 촘촘하게
 
@@ -199,24 +199,25 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
   gl.uniform1i(u.uTex, 0)
 
-  const textures = new Map<string, { key: string; tex: WebGLTexture | null; ready: boolean; mid: [number, number]; centroid: [number, number] }>()
+  const textures = new Map<string, { key: string; tex: WebGLTexture | null; ready: boolean; mid: [number, number]; points: [number, number][]; bone: { key: string; id: number } }>()
 
-  // 그림에서 불투명한 부분의 가운데(위아래·좌우 끝의 중간)와 무게중심 (0~1).
-  // 가운데는 입을 벌릴 때 축으로, 무게중심은 몸 리깅에서 붙을 뼈를 고를 때 쓴다.
+  // 그림에서 불투명한 부분의 가운데(위아래·좌우 끝의 중간, 0~1)와 듬성듬성 뽑은 점들.
+  // 가운데는 입을 벌릴 때 축으로, 점들은 몸 리깅에서 붙을 뼈를 고를 때 쓴다.
   // 작게 줄여서 CPU 캔버스로 한 번만 계산한다.
   let probe: CanvasRenderingContext2D | null = null
-  function opaqueInfo(img: HTMLImageElement): { mid: [number, number]; centroid: [number, number] } {
+  function opaqueInfo(img: HTMLImageElement): { mid: [number, number]; points: [number, number][] } {
     const N = 128
     if (!probe) {
       const c = document.createElement('canvas')
       c.width = c.height = N
       probe = c.getContext('2d', { willReadFrequently: true })
     }
-    if (!probe) return { mid: [0.5, 0.5], centroid: [0.5, 0.5] }
+    if (!probe) return { mid: [0.5, 0.5], points: [] }
     probe.clearRect(0, 0, N, N)
     probe.drawImage(img, 0, 0, N, N)
     const d = probe.getImageData(0, 0, N, N).data
-    let x0 = N, y0 = N, x1 = -1, y1 = -1, sx = 0, sy = 0, n = 0
+    let x0 = N, y0 = N, x1 = -1, y1 = -1
+    const points: [number, number][] = []
     for (let y = 0; y < N; y++) {
       for (let x = 0; x < N; x++) {
         if (d[(y * N + x) * 4 + 3]! > 40) {
@@ -224,14 +225,12 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
           if (x > x1) x1 = x
           if (y < y0) y0 = y
           y1 = y
-          sx += x
-          sy += y
-          n++
+          if (x % 4 == 0 && y % 4 == 0) points.push([(x + 0.5) / N, (y + 0.5) / N])
         }
       }
     }
-    if (x1 < 0) return { mid: [0.5, 0.5], centroid: [0.5, 0.5] }
-    return { mid: [(x0 + x1 + 1) / 2 / N, (y0 + y1 + 1) / 2 / N], centroid: [(sx / n + 0.5) / N, (sy / n + 0.5) / N] }
+    if (x1 < 0) return { mid: [0.5, 0.5], points }
+    return { mid: [(x0 + x1 + 1) / 2 / N, (y0 + y1 + 1) / 2 / N], points }
   }
   let layers: Layer[] = []
 
@@ -266,7 +265,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
     const cur = textures.get(layer.id)
     if (cur && cur.key == key) return
     if (cur && cur.tex) gl.deleteTexture(cur.tex)
-    const entry = { key, tex: null as WebGLTexture | null, ready: false, mid: [0.5, 0.5] as [number, number], centroid: [0.5, 0.5] as [number, number] }
+    const entry = { key, tex: null as WebGLTexture | null, ready: false, mid: [0.5, 0.5] as [number, number], points: [] as [number, number][], bone: { key: '', id: 0 } }
     textures.set(layer.id, entry)
     if (!layer.src.value) return
     resolveSrc(layer).then(url => {
@@ -307,10 +306,14 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   let aspect = 1
   let lastBody: Model['body'] | null = null, lastHeadR = 0.25
 
-  // 몸 레이어가 통째로 따라갈 뼈 (그림 무게중심에서 가장 가까운 뼈)
-  function boneOf(l: Layer, t: { centroid: [number, number] }) {
+  // 몸 레이어가 통째로 따라갈 뼈 (관절이 바뀔 때만 다시 고른다)
+  function boneOf(l: Layer, t: { points: [number, number][]; bone: { key: string; id: number } }) {
     if (!lastBody) return BONE.spine
-    return nearestBone({ x: t.centroid[0], y: t.centroid[1] * aspect }, lastBody, aspect, lastHeadR)
+    const key = JSON.stringify([lastBody.joints, lastBody.radius, aspect, lastHeadR])
+    if (t.bone.key != key) {
+      t.bone = { key, id: boneForPart(t.points.map(([x, y]) => ({ x, y: y * aspect })), lastBody, aspect, lastHeadR) }
+    }
+    return t.bone.id
   }
   let view: View = { zoom: 1, x: 0, y: 0 }
 
@@ -423,7 +426,8 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         if (!t || !t.ready || !isVisible(l, state)) continue
         const seg = l.part == 'head' ? 0 : 1
         if (body && seg) gl.uniform1f(u.uLayerBone, boneOf(l, t))
-        const hair = l.hair.enabled && l.part != 'body' && state.hair && state.hair.get(l.id)
+        // 흔들림 물리는 HairSystem이 계산한 레이어만 (정식판은 머리 레이어만, 베타는 몸 레이어도)
+        const hair = l.hair.enabled && state.hair && state.hair.get(l.id)
         gl.uniform1f(u.uSeg, seg)
         gl.uniform1f(u.uDepth, l.depth / 100 * 0.4)
         gl.uniform1f(u.uCurve, l.curve / 100 * 0.4)

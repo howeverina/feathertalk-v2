@@ -102,10 +102,11 @@ export class HairSystem {
   sims = new Map<string, Hair>()
   out = new Map<string, HairOutput>()
 
-  update(dt: number, layers: Layer[], head: HeadState, t: number, breathLag = 0) {
+  // allowBody: 몸 레이어(스커트·코트·꼬리 등)도 흔들기 (베타)
+  update(dt: number, layers: Layer[], head: HeadState, t: number, breathLag = 0, allowBody = false) {
     const ids = new Set<string>()
     for (const l of layers) {
-      if (!l.hair.enabled || l.part == 'body') continue
+      if (!l.hair.enabled || (l.part == 'body' && !allowBody)) continue
       ids.add(l.id)
       let sim = this.sims.get(l.id)
       if (!sim) {
