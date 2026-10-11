@@ -65,17 +65,24 @@ function bones(j: Record<JointName, P>, radius: number, headR: number) {
   ] as const
 }
 
-// 파츠(레이어) 하나를 통째로 붙일 뼈. 그림이 있는 점들(가로 = 1 단위)이 저마다 가장 가까운 뼈에 투표하고,
-// 가장 많이 받은 뼈로 정한다. 단, 양쪽 다리(또는 양팔)에 걸친 파츠는 — 스커트처럼 — 공통 부모 뼈로.
+// 파츠(레이어)를 어느 뼈에 붙일지.
+// 그림이 있는 점들이 저마다 가장 가까운 뼈에 투표해서 가장 많이 받은 뼈 하나에 통째로 붙인다.
+// 양쪽 다리(또는 양팔)에 고루 걸친 파츠는:
+// - 그림 대부분이 그 뼈들 바로 위에 있으면 '양다리/양팔 레이어'로 보고 반으로 잘라
+//   왼쪽 반은 왼쪽 뼈, 오른쪽 반은 오른쪽 뼈를 따라가게 (위/아래도 가까운 뼈로 나뉜다)
+// - 스커트처럼 다리 사이를 넓게 덮으면 공통 부모 뼈(몸 아래쪽/몸 위쪽)에 통째로
+export const PAIR = { legs: -1, arms: -2 } as const
 const SIDES = [
-  { left: [BONE.thighL, BONE.shinL], right: [BONE.thighR, BONE.shinR], parent: BONE.pelvis },
-  { left: [BONE.upperArmL, BONE.foreArmL], right: [BONE.upperArmR, BONE.foreArmR], parent: BONE.spine },
+  { left: [BONE.thighL, BONE.shinL], right: [BONE.thighR, BONE.shinR], parent: BONE.pelvis, pair: PAIR.legs },
+  { left: [BONE.upperArmL, BONE.foreArmL], right: [BONE.upperArmR, BONE.foreArmR], parent: BONE.spine, pair: PAIR.arms },
 ]
 
+// 붙일 뼈 번호, 또는 PAIR.legs / PAIR.arms (반으로 잘라 리깅)
 export function boneForPart(points: P[], rig: BodyRig, aspect: number, headR: number): number {
   if (!points.length) return BONE.spine
   const list = bones(pts(rig.joints, aspect), rig.radius, headR)
   const votes = new Array(BONE_COUNT).fill(0)
+  const onBone = new Array(BONE_COUNT).fill(0) // 뼈 바로 위(굵기 안쪽 근처)에 있는 점 수
   for (const p of points) {
     let best = 0, bestD = Infinity
     for (const [id, a, b, r] of list) {
@@ -86,12 +93,39 @@ export function boneForPart(points: P[], rig: BodyRig, aspect: number, headR: nu
       }
     }
     votes[best]++
+    if (bestD < 0.015) onBone[best]++
   }
-  const share = (ids: readonly number[]) => ids.reduce((s, i) => s + votes[i], 0) / points.length
+  const share = (ids: readonly number[], v = votes) => ids.reduce((s, i) => s + v[i], 0) / points.length
   for (const s of SIDES) {
-    if (share(s.left) >= 0.2 && share(s.right) >= 0.2) return s.parent
+    if (share(s.left) >= 0.2 && share(s.right) >= 0.2) {
+      return share([...s.left, ...s.right], onBone) >= 0.6 ? s.pair : s.parent
+    }
   }
   return votes.indexOf(Math.max(...votes))
+}
+
+// 반으로 잘라 리깅할 때: 격자 점마다 그 팔/다리 뼈들 중 가장 가까운 뼈 번호
+export function pairSkin(grid: number, pair: number, rig: BodyRig, aspect: number, headR: number): Float32Array {
+  const side = SIDES.find(s => s.pair == pair)!
+  const ids = new Set<number>([...side.left, ...side.right])
+  const list = bones(pts(rig.joints, aspect), rig.radius, headR).filter(([id]) => ids.has(id))
+  const out = new Float32Array((grid + 1) * (grid + 1))
+  let o = 0
+  for (let jy = 0; jy <= grid; jy++) {
+    for (let ix = 0; ix <= grid; ix++) {
+      const p = { x: ix / grid, y: (jy / grid) * aspect }
+      let best: number = side.parent, bestD = Infinity
+      for (const [id, a, b, r] of list) {
+        const d = Math.max(0, distToSegment(p, a, b) - r)
+        if (d < bestD) {
+          bestD = d
+          best = id
+        }
+      }
+      out[o++] = best
+    }
+  }
+  return out
 }
 
 // 레이어 목록에 보여줄 뼈 이름 (L/R은 화면 기준)
@@ -99,6 +133,7 @@ export const BONE_NAMES: Record<number, string> = {
   [BONE.pelvis]: '몸 아래쪽', [BONE.spine]: '몸 위쪽', [BONE.head]: '머리',
   [BONE.thighL]: '왼다리 위쪽', [BONE.shinL]: '왼다리 아래쪽', [BONE.thighR]: '오른다리 위쪽', [BONE.shinR]: '오른다리 아래쪽',
   [BONE.upperArmL]: '왼팔 위쪽', [BONE.foreArmL]: '왼팔 아래쪽', [BONE.upperArmR]: '오른팔 위쪽', [BONE.foreArmR]: '오른팔 아래쪽',
+  [PAIR.legs]: '양다리', [PAIR.arms]: '양팔',
 }
 
 export interface ArmAngles { upperL: number; foreL: number; upperR: number; foreR: number }

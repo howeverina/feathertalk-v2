@@ -1,12 +1,13 @@
 // WebGL 렌더러: 레이어마다 격자(메시)를 휘어서 입체감/볼록·오목/머리카락 흔들림을 표현한다.
 import { BLINK_SWAP, isVisible, type FaceState, type Layer, type Model } from './model'
 import type { BreathState, HairOutput, HeadState } from './physics'
-import { BONE, BONE_COUNT, UPPER_FIRST, boneForPart, poseBones, type ArmAngles } from './skeleton'
+import { BONE, BONE_COUNT, UPPER_FIRST, boneForPart, pairSkin, poseBones, type ArmAngles } from './skeleton'
 
 const GRID = 64 // 눈 깜빡임처럼 좁은 영역도 부드럽게 휘도록 촘촘하게
 
 const VERT = `
 attribute vec2 aPos;
+attribute float aBone;   // 몸 리깅: 따라갈 뼈 번호 (보통 레이어 전체가 같은 값, 양팔/양다리 레이어는 점마다)
 uniform vec2 uRes;
 uniform vec3 uRect;      // 그림의 화면 위치 (x, y, 가로 길이), px
 uniform float uAspect;   // 그림 세로 ÷ 가로. 아래 좌표는 모두 '가로 = 1' 단위 (세로는 0 ~ uAspect)
@@ -16,7 +17,6 @@ uniform vec2 uSquash;
 uniform vec2 uBreath;    // 몸 늘어남, 머리 오르내림
 uniform float uSeg;      // 0: 머리, 1: 몸
 uniform float uRig;      // 몸 리깅을 켰으면 1
-uniform float uLayerBone; // 몸 리깅: 이 레이어가 통째로 따라가는 뼈 번호
 uniform vec2 uWaist;     // 허리 관절 (몸통 원기둥 중심선)
 uniform float uBodyR;    // 몸통 원기둥 반지름
 uniform vec3 uBodyAng;   // 상체 yaw, 상체 pitch, 하체 yaw
@@ -82,7 +82,7 @@ void main() {
   } else if (uRig > 0.5) {
     // 몸: 허리를 지나는 세로 원기둥 곡면 위에 있다고 보고, 얼굴 각도를 따라 조금 회전.
     // 상체 뼈에 붙은 파츠는 상체 비율로, 하체 뼈에 붙은 파츠는 하체 비율로 돈다.
-    float upperW = uLayerBone > ${UPPER_FIRST - 0.5} ? 1.0 : 0.0;
+    float upperW = aBone > ${UPPER_FIRST - 0.5} ? 1.0 : 0.0;
     float dx = m.x - uWaist.x;
     float r2 = clamp(dx * dx / (uBodyR * uBodyR), 0.0, 1.0);
     float z = uDepth + uCurve * (1.0 - r2);
@@ -95,7 +95,7 @@ void main() {
   if (uRig > 0.5) {
     // 뼈대를 따라 움직인다 (기울기, 호흡, 팔 흔들림은 뼈 변환에 들어 있다)
     if (uSeg < 0.5) m = bone(${BONE.head}.0, m);
-    else m = bone(uLayerBone, m);
+    else m = bone(aBone, m);
   } else {
     // 호흡: 몸은 발끝 기준으로 늘어나고, 머리는 목을 따라 오르내린다
     if (uSeg < 0.5) m.y += uBreath.y;
@@ -166,12 +166,13 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   const prog = gl.createProgram()!
   gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT))
   gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, FRAG))
+  gl.bindAttribLocation(prog, 0, 'aPos') // 0번은 항상 켜진 격자 좌표로 (꺼 두면 느려지는 브라우저가 있다)
   gl.linkProgram(prog)
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog))
   gl.useProgram(prog)
 
   const u: Record<string, WebGLUniformLocation | null> = {}
-  for (const name of ['uRes', 'uRect', 'uAspect', 'uCenter', 'uHead', 'uSquash', 'uBreath', 'uSeg', 'uRig', 'uLayerBone', 'uWaist',
+  for (const name of ['uRes', 'uRect', 'uAspect', 'uCenter', 'uHead', 'uSquash', 'uBreath', 'uSeg', 'uRig', 'uWaist',
     'uBodyR', 'uBodyAng', 'uBoneM', 'uBoneT', 'uDepth', 'uCurve',
     'uHairOn', 'uAnchorY', 'uHairDir', 'uHairOffset', 'uHairAngle', 'uTex', 'uAlpha', 'uAlphaTest', 'uEyeBand', 'uPop', 'uMouth']) {
     u[name] = gl.getUniformLocation(prog, name)
@@ -199,7 +200,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
   gl.uniform1i(u.uTex, 0)
 
-  const textures = new Map<string, { key: string; tex: WebGLTexture | null; ready: boolean; mid: [number, number]; points: [number, number][]; bone: { key: string; id: number } }>()
+  const textures = new Map<string, { key: string; tex: WebGLTexture | null; ready: boolean; mid: [number, number]; points: [number, number][]; bone: { key: string; id: number; skin: WebGLBuffer | null } }>()
 
   // 그림에서 불투명한 부분의 가운데(위아래·좌우 끝의 중간, 0~1)와 듬성듬성 뽑은 점들.
   // 가운데는 입을 벌릴 때 축으로, 점들은 몸 리깅에서 붙을 뼈를 고를 때 쓴다.
@@ -265,7 +266,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
     const cur = textures.get(layer.id)
     if (cur && cur.key == key) return
     if (cur && cur.tex) gl.deleteTexture(cur.tex)
-    const entry = { key, tex: null as WebGLTexture | null, ready: false, mid: [0.5, 0.5] as [number, number], points: [] as [number, number][], bone: { key: '', id: 0 } }
+    const entry = { key, tex: null as WebGLTexture | null, ready: false, mid: [0.5, 0.5] as [number, number], points: [] as [number, number][], bone: { key: '', id: 0, skin: null as WebGLBuffer | null } }
     textures.set(layer.id, entry)
     if (!layer.src.value) return
     resolveSrc(layer).then(url => {
@@ -306,14 +307,36 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   let aspect = 1
   let lastBody: Model['body'] | null = null, lastHeadR = 0.25
 
-  // 몸 레이어가 통째로 따라갈 뼈 (관절이 바뀔 때만 다시 고른다)
-  function boneOf(l: Layer, t: { points: [number, number][]; bone: { key: string; id: number } }) {
+  // 몸 레이어가 따라갈 뼈 (관절이 바뀔 때만 다시 고른다).
+  // 양팔/양다리 레이어(음수 번호)는 점마다 뼈 번호를 담은 버퍼도 만든다.
+  type BoneCache = { key: string; id: number; skin: WebGLBuffer | null }
+  function boneOf(l: Layer, t: { points: [number, number][]; bone: BoneCache }) {
     if (!lastBody) return BONE.spine
     const key = JSON.stringify([lastBody.joints, lastBody.radius, aspect, lastHeadR])
     if (t.bone.key != key) {
-      t.bone = { key, id: boneForPart(t.points.map(([x, y]) => ({ x, y: y * aspect })), lastBody, aspect, lastHeadR) }
+      const id = boneForPart(t.points.map(([x, y]) => ({ x, y: y * aspect })), lastBody, aspect, lastHeadR)
+      let skin = t.bone.skin
+      if (id < 0) {
+        skin = skin || gl.createBuffer()
+        gl.bindBuffer(gl.ARRAY_BUFFER, skin)
+        gl.bufferData(gl.ARRAY_BUFFER, pairSkin(GRID, id, lastBody, aspect, lastHeadR), gl.STATIC_DRAW)
+      }
+      t.bone = { key, id, skin }
     }
     return t.bone.id
+  }
+
+  // 그릴 레이어의 뼈 번호를 셰이더에 넘긴다
+  const aBone = gl.getAttribLocation(prog, 'aBone')
+  function useBone(id: number, skin: WebGLBuffer | null) {
+    if (id < 0 && skin) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, skin)
+      gl.enableVertexAttribArray(aBone)
+      gl.vertexAttribPointer(aBone, 1, gl.FLOAT, false, 0, 0)
+    } else {
+      gl.disableVertexAttribArray(aBone)
+      gl.vertexAttrib1f(aBone, id < 0 ? BONE.spine : id)
+    }
   }
   let view: View = { zoom: 1, x: 0, y: 0 }
 
@@ -351,6 +374,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
       for (const [id, t] of textures) {
         if (!ids.has(id)) {
           if (t.tex) gl.deleteTexture(t.tex)
+          if (t.bone.skin) gl.deleteBuffer(t.bone.skin)
           textures.delete(id)
         }
       }
@@ -425,7 +449,8 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         const t = textures.get(l.id)
         if (!t || !t.ready || !isVisible(l, state)) continue
         const seg = l.part == 'head' ? 0 : 1
-        if (body && seg) gl.uniform1f(u.uLayerBone, boneOf(l, t))
+        if (body && seg) useBone(boneOf(l, t), t.bone.skin)
+        else useBone(BONE.head, null)
         // 흔들림 물리는 HairSystem이 계산한 레이어만 (정식판은 머리 레이어만, 베타는 몸 레이어도)
         const hair = l.hair.enabled && state.hair && state.hair.get(l.id)
         gl.uniform1f(u.uSeg, seg)
