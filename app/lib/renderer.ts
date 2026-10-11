@@ -28,6 +28,7 @@ uniform float uCurve;
 uniform float uHairOn;
 uniform float uAnchorY;
 uniform float uHairDir;  // 1: 고정선 아래가 흔들림, -1: 위가 흔들림
+uniform float uHairEnd;  // 흔들림이 가장 커지는 끝 (아래로면 그림 아래 끝, 위로면 위 끝)
 uniform vec2 uHairOffset;
 uniform float uHairAngle;
 uniform vec3 uEyeBand;   // 눈 영역 가운데 높이, 반높이, 눌림 정도(1이면 그대로)
@@ -65,8 +66,8 @@ void main() {
   // 머리카락/장식: 고정선에서 멀어질수록(아래 또는 위로) 크게 휘고 밀린다
   if (uHairOn > 0.5) {
     float t = uHairDir > 0.0
-      ? (m.y - uAnchorY) / max(A - uAnchorY, 0.001)
-      : (uAnchorY - m.y) / max(uAnchorY, 0.001);
+      ? (m.y - uAnchorY) / max(uHairEnd - uAnchorY, 0.001)
+      : (uAnchorY - m.y) / max(uAnchorY - uHairEnd, 0.001);
     float w = pow(smoothstep(0.0, 1.0, t), 1.5);
     vec2 a = vec2(m.x, uAnchorY);
     m = a + rot(m - a, uHairAngle * w) + uHairOffset * w;
@@ -136,6 +137,7 @@ export interface RenderState extends FaceState {
   aspect?: number // 그림 세로 ÷ 가로 (기본 1)
   body?: Model['body'] // 몸 리깅 (enabled일 때만)
   arms?: ArmAngles // 팔 흔들림
+  hairToContent?: boolean // 흔들림 크기를 그림 끝이 아니라 그 레이어 그림의 끝 기준으로 (베타)
 }
 
 export interface View {
@@ -176,7 +178,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   const u: Record<string, WebGLUniformLocation | null> = {}
   for (const name of ['uRes', 'uRect', 'uAspect', 'uCenter', 'uHead', 'uSquash', 'uBreath', 'uSeg', 'uRig', 'uWaist',
     'uBodyR', 'uBodyAng', 'uBoneM', 'uBoneT', 'uBoneZ', 'uDepth', 'uCurve',
-    'uHairOn', 'uAnchorY', 'uHairDir', 'uHairOffset', 'uHairAngle', 'uTex', 'uAlpha', 'uAlphaTest', 'uEyeBand', 'uPop', 'uMouth']) {
+    'uHairOn', 'uAnchorY', 'uHairDir', 'uHairEnd', 'uHairOffset', 'uHairAngle', 'uTex', 'uAlpha', 'uAlphaTest', 'uEyeBand', 'uPop', 'uMouth']) {
     u[name] = gl.getUniformLocation(prog, name)
   }
 
@@ -202,20 +204,20 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
   gl.uniform1i(u.uTex, 0)
 
-  const textures = new Map<string, { key: string; tex: WebGLTexture | null; ready: boolean; mid: [number, number]; points: [number, number][]; bone: { key: string; id: number; skin: WebGLBuffer | null } }>()
+  const textures = new Map<string, { key: string; tex: WebGLTexture | null; ready: boolean; mid: [number, number]; top: number; bottom: number; points: [number, number][]; bone: { key: string; id: number; skin: WebGLBuffer | null } }>()
 
   // 그림에서 불투명한 부분의 가운데(위아래·좌우 끝의 중간, 0~1)와 듬성듬성 뽑은 점들.
   // 가운데는 입을 벌릴 때 축으로, 점들은 몸 리깅에서 붙을 뼈를 고를 때 쓴다.
   // 작게 줄여서 CPU 캔버스로 한 번만 계산한다.
   let probe: CanvasRenderingContext2D | null = null
-  function opaqueInfo(img: HTMLImageElement): { mid: [number, number]; points: [number, number][] } {
+  function opaqueInfo(img: HTMLImageElement): { mid: [number, number]; top: number; bottom: number; points: [number, number][] } {
     const N = 128
     if (!probe) {
       const c = document.createElement('canvas')
       c.width = c.height = N
       probe = c.getContext('2d', { willReadFrequently: true })
     }
-    if (!probe) return { mid: [0.5, 0.5], points: [] }
+    if (!probe) return { mid: [0.5, 0.5], top: 0, bottom: 1, points: [] }
     probe.clearRect(0, 0, N, N)
     probe.drawImage(img, 0, 0, N, N)
     const d = probe.getImageData(0, 0, N, N).data
@@ -232,8 +234,8 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         }
       }
     }
-    if (x1 < 0) return { mid: [0.5, 0.5], points }
-    return { mid: [(x0 + x1 + 1) / 2 / N, (y0 + y1 + 1) / 2 / N], points }
+    if (x1 < 0) return { mid: [0.5, 0.5], top: 0, bottom: 1, points }
+    return { mid: [(x0 + x1 + 1) / 2 / N, (y0 + y1 + 1) / 2 / N], top: y0 / N, bottom: (y1 + 1) / N, points }
   }
   let layers: Layer[] = []
 
@@ -268,7 +270,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
     const cur = textures.get(layer.id)
     if (cur && cur.key == key) return
     if (cur && cur.tex) gl.deleteTexture(cur.tex)
-    const entry = { key, tex: null as WebGLTexture | null, ready: false, mid: [0.5, 0.5] as [number, number], points: [] as [number, number][], bone: { key: '', id: 0, skin: null as WebGLBuffer | null } }
+    const entry = { key, tex: null as WebGLTexture | null, ready: false, mid: [0.5, 0.5] as [number, number], top: 0, bottom: 1, points: [] as [number, number][], bone: { key: '', id: 0, skin: null as WebGLBuffer | null } }
     textures.set(layer.id, entry)
     if (!layer.src.value) return
     resolveSrc(layer).then(url => {
@@ -462,6 +464,10 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         gl.uniform1f(u.uHairOn, hair ? 1 : 0)
         gl.uniform1f(u.uAnchorY, l.hair.anchorY * A)
         gl.uniform1f(u.uHairDir, l.hair.dir == 'up' ? -1 : 1)
+        // 세로로 긴 그림에서도 머리카락·스커트 끝이 충분히 흔들리도록, 베타는 레이어 그림이 있는 끝까지를 기준으로
+        gl.uniform1f(u.uHairEnd, l.hair.dir == 'up'
+          ? (state.hairToContent ? t.top : 0) * A
+          : (state.hairToContent ? t.bottom : 1) * A)
         gl.uniform2f(u.uHairOffset, ...(hair ? hair.offset : [0, 0] as [number, number]))
         gl.uniform1f(u.uHairAngle, hair ? hair.angle : 0)
         // 뜬 눈은 감은 눈으로 바뀌기 전까지 점점 눌린다
