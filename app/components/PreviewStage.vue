@@ -375,7 +375,7 @@ onMounted(() => {
 
     if (beta) renderer?.setView(toRaw(preview.view))
     renderer?.render({
-      ...(beta ? { aspect: m.aspect, body: m.body, arms: arms.update(dt, h.roll * 0.45, now / 1000), hairToContent: true } : {}),
+      ...(beta ? { aspect: m.aspect, body: m.body, arms: arms.update(dt, h.roll * 0.35, now / 1000), hairToContent: true } : {}),
       center: m.center,
       head: h,
       squash: head.squash,

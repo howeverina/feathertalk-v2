@@ -145,8 +145,8 @@ export interface PoseInput {
   arms?: ArmAngles
 }
 
-// 기울기를 관절마다 나눠 받는 비율: 골반, 상체(허리), 머리(목)
-export const ROLL_SHARE = { lower: 0.1, upper: 0.35, head: 0.55 }
+// 기울기 비율: 몸 위쪽은 고개 기울기의 35%, 몸 아래쪽(골반)은 반대로 10% + 골반이 밀린 만큼
+export const ROLL_SHARE = { lower: 0.1, upper: 0.35 }
 
 const apply = (t: Aff, p: P): P => ({ x: t[0] * p.x + t[2] * p.y + t[4], y: t[1] * p.x + t[3] * p.y + t[5] })
 const translate = (x: number, y: number): Aff => [1, 0, 0, 1, x, y]
@@ -193,12 +193,13 @@ export function poseBones(rig: BodyRig, aspect: number, input: PoseInput): { bon
   const f = rig.follow / 100, sway = (rig.sway ?? 50) / 50
   const hipC = mid(j.hipL, j.hipR)
 
-  // 골반: 고개를 돌리거나 기울인 반대쪽으로 살짝 밀리고, 그만큼(+ 고개를 숙이면 조금 더) 내려앉는다
-  const dx = -(h.yaw * 0.5 + h.roll * 0.8) * f * 0.25 * sway
+  // 몸 위쪽과 몸 아래쪽이 S자로 반대로 기운다: 위쪽이 왼쪽으로 기울면 아래쪽(골반)은 허리를 축으로
+  // 오른쪽으로 기울고, 골반이 그쪽으로 살짝 밀리며 내려앉는다(고개를 숙이면 조금 더). 다리는 골반을 따라간다.
+  const upperRoll = h.roll * ROLL_SHARE.upper
+  const dx = (h.yaw * 0.5 + h.roll * 0.8) * f * 0.25 * sway
   const dy = Math.abs(dx) * 1.5 + Math.max(0, h.pitch) * f * 0.06 * sway
-  // 골반이 밀린 쪽 다리로 체중을 싣고(그쪽 엉덩이가 올라감), 반대쪽 엉덩이가 내려가 그쪽 무릎이 더 굽는다
-  const tilt = -dx * 6
-  const pelvis = mul(translate(dx, dy), rotAbout(hipC, h.roll * ROLL_SHARE.lower + tilt))
+  const lowerRoll = -h.roll * ROLL_SHARE.lower - dx * 6
+  const pelvis = mul(translate(dx, dy), rotAbout(j.waist, lowerRoll))
   out[BONE.root] = pelvis
   out[BONE.pelvis] = pelvis
   const depth = new Array(BONE_COUNT).fill(0)
@@ -208,14 +209,16 @@ export function poseBones(rig: BodyRig, aspect: number, input: PoseInput): { bon
   ;[out[BONE.thighR], out[BONE.shinR], bend] = leg(j.hipR, j.kneeR, j.ankleR, apply(pelvis, j.hipR), hipC.x - j.hipR.x || -1)
   depth[BONE.thighR] = depth[BONE.shinR] = bend
 
-  // 상체: 골반을 따라가고, 허리 기준으로 기울고, 숨 쉴 때 가슴이 부푼다
-  const spine = mul(pelvis, mul(rotAbout(j.waist, h.roll * ROLL_SHARE.upper), scaleAbout(j.waist, sx, sy * (1 + (input.stretch || 0)))))
+  // 상체: 골반에 붙어 따라 움직이되 기울기는 골반이 기운 만큼 되돌려 원래 각도(upperRoll)를 유지하고,
+  // 숨 쉴 때 가슴이 부푼다
+  const spine = mul(pelvis, mul(rotAbout(j.waist, upperRoll - lowerRoll), scaleAbout(j.waist, sx, sy * (1 + (input.stretch || 0)))))
   out[BONE.spine] = spine
   out[BONE.upperArmL] = mul(spine, rotAbout(j.shoulderL, arms?.upperL || 0))
   out[BONE.foreArmL] = mul(out[BONE.upperArmL], rotAbout(j.elbowL, arms?.foreL || 0))
   out[BONE.upperArmR] = mul(spine, rotAbout(j.shoulderR, arms?.upperR || 0))
   out[BONE.foreArmR] = mul(out[BONE.upperArmR], rotAbout(j.elbowR, arms?.foreR || 0))
-  out[BONE.head] = mul(spine, rotAbout(j.neck, h.roll * ROLL_SHARE.head))
+  // 머리는 전체로 고개 각도만큼 기울도록 (몸 위쪽이 기운 나머지)
+  out[BONE.head] = mul(spine, rotAbout(j.neck, h.roll - upperRoll))
   return { bones: out, depth }
 }
 

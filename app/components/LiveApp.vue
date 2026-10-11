@@ -281,7 +281,7 @@ onMounted(() => {
     if (beta) renderer!.setView(view)
     renderer!.render({
       // 베타: 세로로 긴 그림, 몸 리깅
-      ...(beta ? { aspect: model.aspect, body: model.body, arms: arms.update(dt, h.roll * 0.45, now / 1000), hairToContent: true } : {}),
+      ...(beta ? { aspect: model.aspect, body: model.body, arms: arms.update(dt, h.roll * 0.35, now / 1000), hairToContent: true } : {}),
       center: model.center,
       head: h,
       squash: head.squash,
