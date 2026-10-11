@@ -79,8 +79,12 @@ function onWheel(e: WheelEvent) {
   view.zoom = z
 }
 
+// 우클릭 또는 휠 버튼 드래그로 이동 (휠 버튼이 없는 트랙패드는 우클릭으로)
 function onMouseDown(e: MouseEvent) {
-  if (beta && e.button == 2) panning = true
+  if (beta && (e.button == 2 || e.button == 1)) {
+    if (e.button == 1) e.preventDefault() // 휠 버튼을 누르면 켜지는 브라우저 자동 스크롤 막기
+    panning = true
+  }
 }
 
 function onMouseUp() {
@@ -345,7 +349,7 @@ onBeforeUnmount(() => {
           <label title="눈을 확실히 감고 있으면 캐릭터도 감아요 (약간 늦게 반응해요). 얼굴을 놓치면 자동 깜빡임으로 돌아가요."><input v-model="camEyes" type="checkbox"> 눈 깜빡임도</label>
         </template>
       </span>
-      <button v-if="beta" class="cam-toggle" title="휠이나 두 손가락 핀치로 확대/축소, 우클릭이나 두 손가락 드래그로 위치를 옮길 수 있어요. 누르면 처음 구도로 돌아가요." @click="fitView">
+      <button v-if="beta" class="cam-toggle" title="휠이나 두 손가락 핀치로 확대/축소, 우클릭·휠 버튼·두 손가락 드래그로 위치를 옮길 수 있어요. 누르면 처음 구도로 돌아가요." @click="fitView">
         <Maximize :size="15" /> 화면 맞춤
       </button>
       <label><span>배경색</span><input v-model="color" type="color"></label>

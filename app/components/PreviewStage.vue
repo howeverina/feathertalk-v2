@@ -107,8 +107,9 @@ function onPointerDown(e: PointerEvent) {
     preview.drag = null
     return
   }
-  // 베타: 우클릭 드래그로 화면 이동
-  if (beta && e.button == 2) {
+  // 베타: 우클릭 또는 휠 버튼 드래그로 화면 이동 (휠 버튼이 없는 트랙패드는 우클릭으로)
+  if (beta && (e.button == 2 || e.button == 1)) {
+    e.preventDefault() // 휠 버튼을 누르면 켜지는 브라우저 자동 스크롤 막기
     panning = true
     overlay.value!.setPointerCapture(e.pointerId)
     return
@@ -424,8 +425,8 @@ onBeforeUnmount(() => {
 
     <div v-if="beta" class="toolbar">
       <span class="label">보기</span>
-      <button class="toggle" title="휠로 확대/축소, 우클릭 드래그로 이동할 수 있어요" @click="fitView">화면 맞춤</button>
-      <span class="tip">{{ Math.round(preview.view.zoom * 100) }}% · 휠/핀치: 확대·축소 · 우클릭/두 손가락 드래그: 이동</span>
+      <button class="toggle" title="휠로 확대/축소, 우클릭이나 휠 버튼 드래그로 이동할 수 있어요" @click="fitView">화면 맞춤</button>
+      <span class="tip">{{ Math.round(preview.view.zoom * 100) }}% · 휠/핀치: 확대·축소 · 우클릭/휠 버튼/두 손가락 드래그: 이동</span>
       <label v-if="model.body.enabled" class="check"><input v-model="preview.showJoints" type="checkbox"> 관절 표시</label>
     </div>
     <div class="toolbar">
