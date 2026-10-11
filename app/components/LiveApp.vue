@@ -6,6 +6,7 @@ import { createRenderer, type Renderer } from '~/lib/renderer'
 import { Arms, Blinker, EyeFollow, Head, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, cameraToTarget, headTarget, lookAt } from '~/lib/physics'
 import { WebcamTracker, type WebcamStatus } from '~/lib/webcam'
 import { createPinch } from '~/lib/gesture'
+import { createAspectTracker } from '~/lib/aspect'
 
 // ---- 설정 (기존과 같은 localStorage 키) ----
 
@@ -213,7 +214,18 @@ async function startMic() {
 
 onMounted(() => {
   // 베타는 세로로 긴 그림을 확대해서 볼 수 있도록 이미지를 크게 올린다
-  renderer = createRenderer(stage.value!, { layout: 'bottom', maxTexture: beta ? 4096 : undefined })
+  // 비율은 저장된 값만 믿지 않고 불러온 이미지로 다시 정한다
+  const aspects = createAspectTracker()
+  renderer = createRenderer(stage.value!, {
+    layout: 'bottom',
+    maxTexture: beta ? 4096 : undefined,
+    onImageSize: beta
+      ? (l, w, h) => {
+          const a = aspects.add(l, w, h, model.layers)
+          if (a) model.aspect = a
+        }
+      : undefined,
+  })
   if (!renderer) {
     noGL.value = true
     return

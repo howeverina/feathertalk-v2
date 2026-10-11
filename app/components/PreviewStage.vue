@@ -4,6 +4,7 @@ import { createRenderer, type Renderer } from '~/lib/renderer'
 import { Arms, Blinker, Head, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
 import { BONE_LINES, BONE_NAMES, mirrorOf } from '~/lib/skeleton'
 import { createPinch } from '~/lib/gesture'
+import { createAspectTracker } from '~/lib/aspect'
 import type { Handle, MotionMode } from '~/composables/useEditor'
 
 const ed = useEditor()
@@ -322,15 +323,17 @@ function drawOverlay() {
 
 // ---- 렌더링 루프 ----
 
+const aspects = createAspectTracker()
+
 onMounted(() => {
   renderer = createRenderer(stage.value!, {
     layout: 'center',
     onImageError: l => ed.imageErrors.add(l.id),
     // 베타: 그림 비율을 자동으로 읽는다 (세로로 긴 그림 지원), 확대해서 볼 수 있도록 이미지를 크게
     onImageSize: beta
-      ? (_, w, h) => {
-          const a = Math.round(h / w * 1000) / 1000
-          if (Math.abs(a - model.value.aspect) > 0.01) model.value.aspect = a
+      ? (l, w, h) => {
+          const a = aspects.add(l, w, h, toRaw(model.value).layers)
+          if (a && Math.abs(a - model.value.aspect) > 0.01) model.value.aspect = a
         }
       : undefined,
     maxTexture: beta ? 4096 : undefined,
