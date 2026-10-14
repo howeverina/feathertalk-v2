@@ -5,6 +5,7 @@ import { PRESETS, SHOW_OPTIONS, type Layer, type PresetKey } from '~/lib/model'
 const ed = useEditor()
 const { model, selectedId, selected, imageErrors, preview } = ed
 const beta = useBeta()
+const slotNo = computed(() => (ed.activeSlot.value + 1) % 10)
 const menuOpen = ref(false)
 const presets = Object.entries(PRESETS) as [PresetKey, (typeof PRESETS)[PresetKey]][]
 const showLabel = Object.fromEntries(SHOW_OPTIONS)
@@ -52,7 +53,10 @@ function onDragEnd() {
 
 <template>
   <section class="panel">
-    <h3>레이어 <small>위에 있을수록 앞에 그려져요 · 끌어서 순서 변경</small></h3>
+    <h3>
+      <span v-if="beta" class="slot-badge" title="지금 편집 중인 캐릭터예요. 미리보기 아래 '캐릭터' 탭에서 바꿔요.">{{ slotNo }}번 캐릭터</span>
+      레이어 <small>위에 있을수록 앞에 그려져요 · 끌어서 순서 변경</small>
+    </h3>
     <ul class="layers">
       <li
         v-for="(l, i) in model.layers"
@@ -99,6 +103,17 @@ function onDragEnd() {
 </template>
 
 <style scoped>
+.slot-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 10px;
+  border-radius: 8px;
+  background: var(--main);
+  color: white;
+  font-size: 0.85rem;
+  vertical-align: middle;
+}
+
 .layers {
   list-style: none;
   margin: 0 0 10px;

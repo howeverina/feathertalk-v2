@@ -28,9 +28,6 @@ window.addEventListener('pagehide', () => saveMulti(toRaw(settings)))
 const watcher = new ScreenWatcher()
 const capturing = ref(false)
 const talking = reactive<boolean[]>(new Array(10).fill(false))
-// 테스트: 캡처 없이 이 캐릭터를 말하는(연주하는) 상태로 — 입 움직임과 연주 포즈 확인용
-const testing = reactive<boolean[]>(new Array(10).fill(false))
-const shownTalking = computed(() => talking.map((t, i) => t || testing[i]!))
 const scores = reactive<number[]>(new Array(10).fill(0))
 // 미리보기에서 하는 일: 자르기 영역 / N번 감지 영역 / 기준 색 고르기
 const mode = ref<'none' | 'crop' | 'pick' | number>('none')
@@ -216,7 +213,7 @@ const strictLabel = computed(() => settings.detect.mode == 'syncroom'
         <div class="left">
           <section class="panel">
             <h3>무대 <UiInfoTip text="캐릭터와 오브젝트를 끌어서 옮기고, 오른쪽 아래 파란 점을 끌어 크기를 바꿔요. 말하는 캐릭터는 초록 테두리로 보여요." /></h3>
-            <MultiStage :settings="settings" :models="models" :talking="shownTalking" editable :paused="page == 'make'" />
+            <MultiStage :settings="settings" :models="models" :talking="talking" editable :paused="page == 'make'" />
           </section>
           <section class="panel">
             <h3>레이어 순서 <small>위에 있을수록 앞에 그려져요</small></h3>
@@ -277,9 +274,6 @@ const strictLabel = computed(() => settings.detect.mode == 'syncroom'
                   </button>
                   <span class="meter" :title="`${Math.round(scores[i]!)}px`"><span :style="{ width: Math.min(100, scores[i]! / Math.max(1, settings.detect.activity) * 50) + '%' }" :class="{ on: talking[i] }" /></span>
                   <label class="check" title="끄면 정면을 보고 가만히 있어요 (깜빡임·호흡·입은 그대로)"><input v-model="c.motion" type="checkbox"> 움직임</label>
-                  <button class="plain small" :class="{ testing: testing[i] }" title="캡처 없이 말하는(연주하는) 상태로 만들어 입 움직임과 연주 포즈를 확인해요" @click="testing[i] = !testing[i]">
-                    {{ testing[i] ? '테스트 끄기' : '테스트' }}
-                  </button>
                   <span v-if="!c.region" class="warn">영역 필요</span>
                 </template>
               </li>
@@ -525,11 +519,6 @@ button.primary.inline {
 .small {
   padding: 2px 8px;
   font-size: 0.8rem;
-}
-
-.plain.testing {
-  border-color: #2ecc71;
-  color: #1e9e57;
 }
 
 .plain.arming {

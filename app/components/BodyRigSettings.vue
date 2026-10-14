@@ -3,7 +3,7 @@
 import { defaultJoints } from '~/lib/model'
 import { BONE, BONE_NAMES, PAIR } from '~/lib/skeleton'
 
-const { model, preview } = useEditor()
+const { model, preview, activeSlot } = useEditor()
 const percent = (v: number) => Math.round(v * 100) + '%'
 const strength = (v: number) => v + '%'
 
@@ -42,6 +42,7 @@ const missingBones = computed(() => {
 
 <template>
   <section class="panel">
+    <p class="editing">{{ (activeSlot + 1) % 10 }}번 캐릭터 편집 중 <small>(미리보기 아래 '캐릭터' 탭에서 바꿔요)</small></p>
     <label class="switch big">
       <input v-model="model.body.enabled" type="checkbox">
       <span class="knob" />
@@ -99,7 +100,7 @@ const missingBones = computed(() => {
         </li>
         <li>
           <div class="step-head">
-            <span class="num">4</span><b>연주 포즈</b> <small class="opt">선택</small>
+            <span class="num">4</span><b>연주 포즈</b> <small class="opt">선택 · {{ (activeSlot + 1) % 10 }}번 캐릭터</small>
             <UiInfoTip>
               악기를 연주할 때의 동작 1·2를 직접 만들어요. 동작을 고른 채 미리보기의 관절점을 끌면 그 뼈가 돌아가요
               (팔꿈치 → 팔 위쪽, 손목 → 팔 아래쪽, 무릎 → 다리 위쪽, 발목 → 다리 아래쪽, 목 → 몸 위쪽).
@@ -134,6 +135,17 @@ const missingBones = computed(() => {
 </template>
 
 <style scoped>
+.editing {
+  margin: 0 0 10px;
+  font-weight: 700;
+  color: var(--main-dark);
+}
+
+.editing small {
+  font-weight: 400;
+  color: var(--muted);
+}
+
 .switch {
   display: flex;
   align-items: center;
