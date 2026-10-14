@@ -195,7 +195,7 @@ function baseModel(): Model {
     eyes: { squash: false, y: 0.4, h: 0.05 },
     mouth: { animate: true },
     aspect: 1,
-    body: { enabled: false, joints: defaultJoints(), radius: 0.15, follow: 35, sway: 50, mirror: true, poses: { a: new Array(12).fill(0), b: new Array(12).fill(0) }, playSpeed: 2 },
+    body: { enabled: false, joints: defaultJoints(), radius: 0.15, follow: 35, sway: 50, mirror: true, poses: { a: new Array(12).fill(0), b: new Array(12).fill(0) }, playSpeed: 0.6 },
     layers: [],
   }
 }

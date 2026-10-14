@@ -103,7 +103,7 @@ const bodyLayers = computed(() => model.value.layers.filter(l => l.part == 'body
             <button v-if="preview.poseEdit" class="plain" @click="resetPose(preview.poseEdit)">이 동작 초기화</button>
           </div>
           <RangeField
-            v-model="model.body.playSpeed" label="연주 속도" left="느리게" right="빠르게" :min="0.5" :max="6" :step="0.1" :def="2" :format="v => v.toFixed(1) + '회/초'"
+            v-model="model.body.playSpeed" label="연주 속도" left="느리게" right="빠르게" :min="0.1" :max="4" :step="0.1" :def="0.6" :format="v => v.toFixed(1) + '회/초'"
             desc="연주 중에 동작 1과 2를 1초에 몇 번 오갈지예요."
           />
         </li>
