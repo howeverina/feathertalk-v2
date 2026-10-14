@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 베타: 몸 리깅 설정 (단계별)
 import { defaultJoints } from '~/lib/model'
+import { BONE, BONE_NAMES, PAIR } from '~/lib/skeleton'
 
 const { model, preview } = useEditor()
 const percent = (v: number) => Math.round(v * 100) + '%'
@@ -21,6 +22,22 @@ function resetJoints() {
 
 // 몸 레이어마다 자동으로 붙은 뼈
 const bodyLayers = computed(() => model.value.layers.filter(l => l.part == 'body'))
+
+// 연주 포즈에서 돌렸는데 그 뼈에 붙은 레이어가 없는 뼈 (돌려도 화면에 안 보인다)
+const PAIR_BONES: Record<string, number[]> = {
+  [BONE_NAMES[PAIR.arms]!]: [BONE.upperArmL, BONE.foreArmL, BONE.upperArmR, BONE.foreArmR],
+  [BONE_NAMES[PAIR.legs]!]: [BONE.thighL, BONE.shinL, BONE.thighR, BONE.shinR],
+}
+const missingBones = computed(() => {
+  const { a, b } = model.value.body.poses
+  const covered = new Set<number>()
+  for (const name of Object.values(preview.layerBones)) {
+    for (const id of PAIR_BONES[name] || []) covered.add(id)
+    const id = Object.entries(BONE_NAMES).find(([, n]) => n == name)?.[0]
+    if (id != null) covered.add(+id)
+  }
+  return a.map((v, i) => (v || b[i]) && !covered.has(i) ? BONE_NAMES[i] : null).filter(Boolean) as string[]
+})
 </script>
 
 <template>
@@ -96,6 +113,10 @@ const bodyLayers = computed(() => model.value.layers.filter(l => l.part == 'body
             <button :class="{ on: preview.poseEdit == 'b' }" @click="editPose('b')">동작 2</button>
           </div>
           <p v-if="preview.poseEdit" class="desc">관절점을 끌어 동작 {{ preview.poseEdit == 'a' ? 1 : 2 }}의 자세를 잡아요.</p>
+          <p v-if="missingBones.length" class="warn">
+            {{ missingBones.join(', ') }} 뼈를 돌렸지만 그 뼈에 붙은 레이어가 없어서 화면에서는 안 움직여요.
+            위 '파츠 확인'에서 그 부위 그림이 따로 레이어로 나뉘어 해당 뼈에 붙어 있는지 확인해 주세요.
+          </p>
           <div class="row">
             <button class="plain" :class="{ on: preview.playTest }" @click="preview.playTest = !preview.playTest; preview.poseEdit = null">
               {{ preview.playTest ? '연주 미리보기 멈추기' : '연주 미리보기' }}
@@ -202,6 +223,15 @@ const bodyLayers = computed(() => model.value.layers.filter(l => l.part == 'body
 
 .row {
   margin-top: 8px;
+}
+
+.warn {
+  font-size: 0.8rem;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin: 8px 0 0;
 }
 
 .opt {
