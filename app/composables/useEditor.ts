@@ -1,7 +1,7 @@
 // 편집기 전체가 함께 쓰는 상태 (모델, 선택한 레이어, 미리보기 상태)
 import {
   loadModel, saveModel, newLayer, duplicateLayer, defaultModel, cleanupFiles, putFile, exportJSON, importJSON, selectStorage,
-  loadSlots, saveSlots, normalizeModel,
+  loadSlots, saveSlots, normalizeModel, onSlotsChanged,
   type Layer, type LayerSource, type Model, type PresetKey,
 } from '~/lib/model'
 
@@ -15,6 +15,13 @@ function createEditor(beta: boolean) {
   const slots = reactive<Model[]>(initial ? initial.slots : [])
   const activeSlot = ref(initial ? initial.active : 0)
   const model = ref<Model>(beta ? slots[activeSlot.value]! : loadModel())
+  // 다른 탭에서 캐릭터를 고치면 여기도 바로 반영
+  if (beta) {
+    onSlotsChanged(next => {
+      next.forEach((m, i) => slots[i] = m)
+      model.value = slots[activeSlot.value]!
+    })
+  }
   const selectedId = ref<string | null>(model.value.layers[0]?.id ?? null)
   const selected = computed(() => model.value.layers.find(l => l.id == selectedId.value) || null)
   const imageErrors = reactive(new Set<string>()) // 이미지를 못 불러온 레이어 id

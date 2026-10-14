@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 라이브 화면 (OBS 등에서 캡처)
 import { ArrowLeft, Camera, Crosshair, Maximize, Mic } from '@lucide/vue'
-import { loadModel, loadSlots, resolveSrc, selectStorage } from '~/lib/model'
+import { loadModel, loadSlots, onSlotsChanged, resolveSrc, selectStorage } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
 import { Arms, Blinker, EyeFollow, Head, PosePlayer, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, cameraToTarget, headTarget, lookAt } from '~/lib/physics'
 import { WebcamTracker, type WebcamStatus } from '~/lib/webcam'
@@ -53,6 +53,16 @@ selectStorage(beta)
 // 베타: 1~0번 캐릭터 슬롯 (숫자키로 캐릭터 전체를 바꾼다). 정식판은 레이어별 표정.
 const slotData = beta ? loadSlots() : null
 let model = slotData ? slotData.slots[slotData.active]! : loadModel()
+let activeSlot = slotData ? slotData.active : 0
+// 다른 탭(편집기)에서 캐릭터를 고치면 바로 반영
+if (slotData) {
+  const off = onSlotsChanged(next => {
+    slotData.slots = next
+    model = next[activeSlot]!
+    applyLayers()
+  })
+  onBeforeUnmount(off)
+}
 
 // ---- 베타: 휠로 확대/축소, 우클릭 드래그로 이동 (방송 구도 잡기, 저장됨) ----
 
@@ -113,6 +123,7 @@ function onKey(e: KeyboardEvent) {
     expression = i
     return
   }
+  activeSlot = i
   model = slotData.slots[i]!
   applyLayers()
 }

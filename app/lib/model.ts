@@ -313,6 +313,19 @@ export function loadSlots(): { slots: Model[]; active: number } {
   return { slots: Array.from({ length: SLOT_COUNT }, (_, i) => fromExpression(base, i)), active }
 }
 
+// 다른 탭(예: /beta에서 캐릭터를 고칠 때)에서 슬롯이 저장되면 알려준다. 해제 함수를 돌려준다.
+export function onSlotsChanged(cb: (slots: Model[]) => void): () => void {
+  const handler = (e: StorageEvent) => {
+    if (e.key != SLOTS_KEY || !e.newValue) return
+    try {
+      const raw = JSON.parse(e.newValue)
+      if (Array.isArray(raw) && raw.length) cb(raw.map((m: any) => normalizeModel(m)))
+    } catch (err) {}
+  }
+  window.addEventListener('storage', handler)
+  return () => window.removeEventListener('storage', handler)
+}
+
 export function saveSlots(slots: Model[], active: number) {
   localStorage.setItem(SLOTS_KEY, JSON.stringify(slots))
   localStorage.setItem(SLOT_KEY, String(active))

@@ -1,11 +1,14 @@
 <script setup lang="ts">
 // 멀티 라이브: 무대를 화면에 꽉 차게(16:9) 보여주고, 화면 캡처로 누가 말하는지 감지한다.
 import { ArrowLeft, MonitorUp } from '@lucide/vue'
-import { loadSlots, selectStorage, type Model } from '~/lib/model'
+import { loadSlots, onSlotsChanged, selectStorage, type Model } from '~/lib/model'
 import { ScreenWatcher, loadMulti } from '~/lib/multi'
 
 selectStorage(true)
 const models = shallowRef<Model[]>(loadSlots().slots)
+// 다른 탭에서 캐릭터(포즈 등)를 고치면 바로 반영
+const offSlots = onSlotsChanged(next => models.value = next)
+onBeforeUnmount(offSlots)
 const settings = reactive(loadMulti())
 
 // 마우스가 2초 동안 멈추면 컨트롤을 숨긴다 (캡처 중일 때만)
