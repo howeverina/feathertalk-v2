@@ -170,13 +170,18 @@ export class Arms {
 export class PosePlayer {
   w = 0 // 0 기본 자세 ~ 1 연주 자세
 
-  update(dt: number, playing: boolean, poses: { a: number[]; b: number[] }, speed: number, t: number): number[] {
+  // 렌더러에 넘길 { pose: 각도, poseLen: 길이 배율 }
+  update(dt: number, playing: boolean, poses: { a: number[]; b: number[]; aLen?: number[]; bLen?: number[] }, speed: number, t: number) {
     const d = Math.min(dt, 0.1)
     this.w = playing ? Math.min(1, this.w + d / 0.15) : Math.max(0, this.w - d / 0.3)
-    if (this.w == 0) return []
+    if (this.w == 0) return { pose: [] as number[], poseLen: [] as number[] }
     const k = 0.5 - 0.5 * Math.cos(2 * Math.PI * speed * t) // 0이면 동작 1, 1이면 동작 2
     const w = this.w * this.w * (3 - 2 * this.w)
-    return poses.a.map((a, i) => w * (a + ((poses.b[i] || 0) - a) * k))
+    const mix = (x: number, y: number) => x + (y - x) * k
+    return {
+      pose: poses.a.map((a, i) => w * mix(a, poses.b[i] || 0)),
+      poseLen: poses.a.map((_, i) => 1 + w * (mix(poses.aLen?.[i] ?? 1, poses.bLen?.[i] ?? 1) - 1)),
+    }
   }
 }
 

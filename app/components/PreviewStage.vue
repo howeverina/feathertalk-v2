@@ -2,7 +2,7 @@
 import { JOINTS, resolveSrc, type JointName, type Layer } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
 import { Arms, Blinker, Head, PosePlayer, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
-import { BONE_LINES, BONE_NAMES, POSE_DRIVE, mirrorOf, posedJoints } from '~/lib/skeleton'
+import { BONE_LINES, BONE_NAMES, POSE_DRIVE, STRETCHABLE, mirrorOf, posedJoints } from '~/lib/skeleton'
 import { createPinch } from '~/lib/gesture'
 import { createAspectTracker } from '~/lib/aspect'
 import type { Handle, MotionMode } from '~/composables/useEditor'
@@ -52,7 +52,9 @@ const rigOn = () => beta && model.value.body.enabled && (preview.showJoints || !
 // 연주 포즈를 잡는 중이면 그 포즈를 적용한 관절 위치, 아니면 쉴 때 관절 위치
 function jointsShown() {
   const b = model.value.body
-  return preview.poseEdit ? posedJoints(toRaw(b), model.value.aspect, toRaw(b.poses[preview.poseEdit])) : b.joints
+  if (!preview.poseEdit) return b.joints
+  const e = preview.poseEdit
+  return posedJoints(toRaw(b), model.value.aspect, toRaw(b.poses[e]), toRaw(b.poses[e == 'a' ? 'aLen' : 'bLen']))
 }
 
 // ---- 핸들 (얼굴 중심, 얼굴 크기, 머리카락 고정선, 눈 영역, 관절) ----
@@ -155,13 +157,22 @@ function onPointerMove(e: PointerEvent) {
       if (drive) {
         const [bone, pivotName] = drive
         const A = model.value.aspect
-        const pose = model.value.body.poses[preview.poseEdit]
+        const e = preview.poseEdit
+        const pose = model.value.body.poses[e], lens = model.value.body.poses[e == 'a' ? 'aLen' : 'bLen']
         const J = jointsShown(), pv = J[pivotName], ch = J[name]
-        const cur = Math.atan2((ch.y - pv.y) * A, ch.x - pv.x)
-        const want = Math.atan2((my - pv.y) * A, mx - pv.x)
-        let d = want - cur
-        d = Math.atan2(Math.sin(d), Math.cos(d))
-        pose[bone] = Math.round(((pose[bone] || 0) + d) * 1000) / 1000
+        if (preview.poseMode == 'length' && STRETCHABLE.has(bone)) {
+          // 길이: 축 관절에서 멀리 끌면 늘어나고 가까이 끌면 줄어든다 (0.7~1.3배)
+          const cur = Math.hypot(ch.x - pv.x, (ch.y - pv.y) * A)
+          const base = cur / (lens[bone] || 1)
+          const want = Math.hypot(mx - pv.x, (my - pv.y) * A)
+          lens[bone] = Math.round(clamp(want / Math.max(base, 1e-6), 0.7, 1.3) * 100) / 100
+        } else {
+          const cur = Math.atan2((ch.y - pv.y) * A, ch.x - pv.x)
+          const want = Math.atan2((my - pv.y) * A, mx - pv.x)
+          let d = want - cur
+          d = Math.atan2(Math.sin(d), Math.cos(d))
+          pose[bone] = Math.round(((pose[bone] || 0) + d) * 1000) / 1000
+        }
       }
     } else if (drag.startsWith('joint:')) {
       // 관절: 좌우 대칭이면 짝 관절도 허리 기준으로 반대편에 같이 옮긴다
@@ -427,7 +438,9 @@ onMounted(() => {
       ...(beta ? {
         aspect: m.aspect, body: m.body, arms: arms.update(dt, h.roll * 0.35, now / 1000), hairToContent: true,
         // 연주 포즈: 편집 중이면 그 동작 그대로, 아니면 '연주 미리보기'일 때 동작 1·2를 오간다
-        pose: preview.poseEdit ? m.body.poses[preview.poseEdit] : posePlayer.update(dt, preview.playTest, m.body.poses, m.body.playSpeed, now / 1000),
+        ...(preview.poseEdit
+          ? { pose: m.body.poses[preview.poseEdit], poseLen: m.body.poses[preview.poseEdit == 'a' ? 'aLen' : 'bLen'] }
+          : posePlayer.update(dt, preview.playTest, m.body.poses, m.body.playSpeed, now / 1000)),
       } : {}),
       center: m.center,
       head: h,

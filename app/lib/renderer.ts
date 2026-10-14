@@ -142,6 +142,7 @@ export interface RenderState extends FaceState {
   body?: Model['body'] // 몸 리깅 (enabled일 때만)
   arms?: ArmAngles // 팔 흔들림
   pose?: number[] // 연주 포즈 (뼈마다 더 돌릴 각도)
+  poseLen?: number[] // 연주 포즈 (팔·다리 뼈 길이 배율)
   hairToContent?: boolean // 흔들림 크기를 그림 끝이 아니라 그 레이어 그림의 끝 기준으로 (베타)
 }
 
@@ -444,7 +445,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         gl.uniform2f(u.uWaist, body.joints.waist.x, body.joints.waist.y * A)
         gl.uniform1f(u.uBodyR, Math.max(0.01, body.radius))
         gl.uniform3f(u.uBodyAng, h.yaw * f * 1.4, h.pitch * f * 0.8, h.yaw * f * 0.4)
-        const pose = poseBones(body, A, { head: h, squash: state.squash, stretch: state.breath?.bodyStretch, arms: state.arms, pose: state.pose })
+        const pose = poseBones(body, A, { head: h, squash: state.squash, stretch: state.breath?.bodyStretch, arms: state.arms, pose: state.pose, poseLen: state.poseLen })
         gl.uniform4fv(u.uBoneM, pose.bones.flatMap(t => [t[0], t[1], t[2], t[3]]))
         gl.uniform2fv(u.uBoneT, pose.bones.flatMap(t => [t[4], t[5]]))
         gl.uniform1fv(u.uBoneZ, pose.depth)

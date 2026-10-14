@@ -39,6 +39,7 @@ function createEditor(beta: boolean) {
     showJoints: true, // 베타: 관절 표시
     layerBones: {} as Record<string, string>, // 베타: 몸 레이어가 자동으로 붙은 뼈 이름
     poseEdit: null as null | 'a' | 'b', // 베타: 연주 포즈 동작 1·2 편집 중
+    poseMode: 'rotate' as 'rotate' | 'length', // 베타: 포즈 편집 때 관절을 끌면 회전 / 길이
     playTest: false, // 베타: 연주 미리보기
   })
 

@@ -313,7 +313,7 @@ onMounted(() => {
       // 베타: 세로로 긴 그림, 몸 리깅
       // 베타: 세로로 긴 그림, 몸 리깅, 연주 포즈 (마이크 소리가 날 때 동작 1·2를 오간다)
       ...(beta ? { aspect: model.aspect, body: model.body, arms: arms.update(dt, h.roll * 0.35, now / 1000), hairToContent: true,
-        pose: posePlayer.update(dt, isTalking, model.body.poses, model.body.playSpeed, now / 1000) } : {}),
+        ...posePlayer.update(dt, isTalking, model.body.poses, model.body.playSpeed, now / 1000) } : {}),
       center: model.center,
       head: h,
       squash: head.squash,

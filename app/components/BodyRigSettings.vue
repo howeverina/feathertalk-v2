@@ -8,7 +8,9 @@ const percent = (v: number) => Math.round(v * 100) + '%'
 const strength = (v: number) => v + '%'
 
 function resetPose(k: 'a' | 'b') {
-  if (confirm(`동작 ${k == 'a' ? 1 : 2}를 기본 자세로 되돌릴까요?`)) model.value.body.poses[k] = new Array(12).fill(0)
+  if (!confirm(`동작 ${k == 'a' ? 1 : 2}를 기본 자세로 되돌릴까요?`)) return
+  model.value.body.poses[k] = new Array(12).fill(0)
+  model.value.body.poses[k == 'a' ? 'aLen' : 'bLen'] = new Array(12).fill(1)
 }
 
 function editPose(k: null | 'a' | 'b') {
@@ -29,14 +31,15 @@ const PAIR_BONES: Record<string, number[]> = {
   [BONE_NAMES[PAIR.legs]!]: [BONE.thighL, BONE.shinL, BONE.thighR, BONE.shinR],
 }
 const missingBones = computed(() => {
-  const { a, b } = model.value.body.poses
+  const { a, b, aLen, bLen } = model.value.body.poses
   const covered = new Set<number>()
   for (const name of Object.values(preview.layerBones)) {
     for (const id of PAIR_BONES[name] || []) covered.add(id)
     const id = Object.entries(BONE_NAMES).find(([, n]) => n == name)?.[0]
     if (id != null) covered.add(+id)
   }
-  return a.map((v, i) => (v || b[i]) && !covered.has(i) ? BONE_NAMES[i] : null).filter(Boolean) as string[]
+  const used = (i: number) => a[i] || b[i] || (aLen[i] ?? 1) != 1 || (bLen[i] ?? 1) != 1
+  return a.map((_, i) => used(i) && !covered.has(i) ? BONE_NAMES[i] : null).filter(Boolean) as string[]
 })
 </script>
 
@@ -113,7 +116,19 @@ const missingBones = computed(() => {
             <button :class="{ on: preview.poseEdit == 'a' }" @click="editPose('a')">동작 1</button>
             <button :class="{ on: preview.poseEdit == 'b' }" @click="editPose('b')">동작 2</button>
           </div>
-          <p v-if="preview.poseEdit" class="desc">관절점을 끌어 동작 {{ preview.poseEdit == 'a' ? 1 : 2 }}의 자세를 잡아요.</p>
+          <template v-if="preview.poseEdit">
+            <div class="row">
+              <span class="mini">끌면</span>
+              <div class="seg">
+                <button :class="{ on: preview.poseMode == 'rotate' }" @click="preview.poseMode = 'rotate'">회전</button>
+                <button :class="{ on: preview.poseMode == 'length' }" title="팔·다리 뼈를 0.7~1.3배로 늘이거나 줄여요" @click="preview.poseMode = 'length'">길이</button>
+              </div>
+            </div>
+            <p class="desc">
+              관절점을 끌어 동작 {{ preview.poseEdit == 'a' ? 1 : 2 }}의 자세를 잡아요.
+              <template v-if="preview.poseMode == 'length'">축 관절에서 멀리 끌면 뼈가 늘어나고, 가까이 끌면 줄어요 (팔·다리만).</template>
+            </p>
+          </template>
           <p v-if="missingBones.length" class="warn">
             {{ missingBones.join(', ') }} 뼈를 돌렸지만 그 뼈에 붙은 레이어가 없어서 화면에서는 안 움직여요.
             위 '파츠 확인'에서 그 부위 그림이 따로 레이어로 나뉘어 해당 뼈에 붙어 있는지 확인해 주세요.
@@ -244,6 +259,12 @@ const missingBones = computed(() => {
   border-radius: 8px;
   padding: 6px 8px;
   margin: 8px 0 0;
+}
+
+.mini {
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-right: 6px;
 }
 
 .opt {

@@ -73,7 +73,7 @@ export interface BodyRig {
   follow: number // 몸이 얼굴 각도를 따라가는 정도 (%)
   sway: number // 골반이 밀리고 무릎이 굽는 정도 (0~100, 50이 기본)
   mirror: boolean // 관절을 좌우 대칭으로 움직이기
-  poses: { a: number[]; b: number[] } // 연주 포즈 동작 1·2: 뼈마다 더 돌릴 각도 (rad)
+  poses: { a: number[]; b: number[]; aLen: number[]; bLen: number[] } // 연주 포즈 동작 1·2: 뼈마다 더 돌릴 각도(rad)와 길이 배율
   playSpeed: number // 연주할 때 동작 1·2를 1초에 몇 번 오갈지
 }
 
@@ -195,7 +195,7 @@ function baseModel(): Model {
     eyes: { squash: false, y: 0.4, h: 0.05 },
     mouth: { animate: true },
     aspect: 1,
-    body: { enabled: false, joints: defaultJoints(), radius: 0.15, follow: 35, sway: 50, mirror: true, poses: { a: new Array(12).fill(0), b: new Array(12).fill(0) }, playSpeed: 0.6 },
+    body: { enabled: false, joints: defaultJoints(), radius: 0.15, follow: 35, sway: 50, mirror: true, poses: { a: new Array(12).fill(0), b: new Array(12).fill(0), aLen: new Array(12).fill(1), bLen: new Array(12).fill(1) }, playSpeed: 0.6 },
     layers: [],
   }
 }
@@ -244,6 +244,8 @@ export function normalizeModel(raw: any): Model {
   m.body.poses = {
     a: Array.from({ length: 12 }, (_, i) => raw.body?.poses?.a?.[i] || 0),
     b: Array.from({ length: 12 }, (_, i) => raw.body?.poses?.b?.[i] || 0),
+    aLen: Array.from({ length: 12 }, (_, i) => raw.body?.poses?.aLen?.[i] || 1),
+    bLen: Array.from({ length: 12 }, (_, i) => raw.body?.poses?.bLen?.[i] || 1),
   }
   m.layers = (raw.layers || []).map((l: any) => {
     const d = newLayer('blank')

@@ -48,7 +48,7 @@ onMounted(() => {
     renderer!.render({
       aspect: m.aspect, body: m.body, arms: arms.update(dt, h.roll * 0.35, now / 1000), hairToContent: true,
       // 연주 포즈: 감지되면(연주 중) 동작 1·2를 오간다
-      pose: posePlayer.update(dt, props.talking, m.body.poses, m.body.playSpeed, (now + offset) / 1000),
+      ...posePlayer.update(dt, props.talking, m.body.poses, m.body.playSpeed, (now + offset) / 1000),
       center: m.center,
       head: h,
       squash: head.squash,

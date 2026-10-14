@@ -144,6 +144,7 @@ export interface PoseInput {
   stretch?: number // 호흡: 몸 세로 늘어남
   arms?: ArmAngles
   pose?: number[] // 연주 포즈: 뼈마다 더 돌릴 각도 (rad, BONE 번호 순서)
+  poseLen?: number[] // 연주 포즈: 팔·다리 뼈 길이 배율 (1이면 그대로)
 }
 
 // 기울기 비율: 몸 위쪽은 고개 기울기의 35%, 몸 아래쪽(골반)은 반대로 10% + 골반이 밀린 만큼
@@ -184,6 +185,17 @@ function leg(hip: P, knee: P, ankle: P, hip2: P, inward: number): [Aff, Aff, num
   return [segmentMap(hip, knee, hip2, knee2), segmentMap(knee, ankle, knee2, ankle), bend, knee2]
 }
 
+// 팔·다리 길이 조절: 이미 돌려 둔 위(a→b)·아래(b→c) 뼈를 뼈 방향으로만 늘이거나 줄인다.
+// 위 뼈가 늘어나면 아래 뼈는 늘어난 끝으로 옮겨 붙는다.
+function stretchLimb(out: Aff[], a: P, b: P, c: P, upper: number, lower: number, su: number, sl: number) {
+  if (su == 1 && sl == 1) return
+  const a2 = apply(out[upper]!, a), b2 = apply(out[upper]!, b), c2 = apply(out[lower]!, c)
+  const b3 = { x: a2.x + (b2.x - a2.x) * su, y: a2.y + (b2.y - a2.y) * su }
+  const c3 = { x: b3.x + (c2.x - b2.x) * sl, y: b3.y + (c2.y - b2.y) * sl }
+  out[upper] = segmentMap(a, b, a2, b3)
+  out[lower] = segmentMap(b, c, b3, c3)
+}
+
 // 뼈마다 쉴 때 → 지금 자세로 옮기는 변환 (부모에서 자식 순서로 쌓는다)과,
 // 뼈마다 카메라 쪽으로 나온 정도 (양다리를 한 장에 그렸을 때 더 굽은 다리가 앞에 오도록)
 export function poseBones(rig: BodyRig, aspect: number, input: PoseInput): { bones: Aff[]; depth: number[] } {
@@ -206,6 +218,8 @@ export function poseBones(rig: BodyRig, aspect: number, input: PoseInput): { bon
   const depth = new Array(BONE_COUNT).fill(0)
   const P = input.pose || []
   const pa = (b: number) => P[b] || 0
+  const L = input.poseLen || []
+  const pl = (b: number) => L[b] || 1
   // 다리: 발을 바닥에 붙인 채 무릎을 굽힌 뒤, 연주 포즈가 있으면 엉덩이·무릎 기준으로 더 돌린다
   for (const [hip, knee, ankle, thigh, shin, inward] of [
     [j.hipL, j.kneeL, j.ankleL, BONE.thighL, BONE.shinL, hipC.x - j.hipL.x || 1],
@@ -216,6 +230,7 @@ export function poseBones(rig: BodyRig, aspect: number, input: PoseInput): { bon
     const rThigh = rotAbout(hip2, pa(thigh))
     out[thigh] = mul(rThigh, t)
     out[shin] = mul(rThigh, mul(rotAbout(knee2, pa(shin)), s))
+    stretchLimb(out, hip, knee, ankle, thigh, shin, pl(thigh), pl(shin))
     depth[thigh] = depth[shin] = bend
   }
 
@@ -227,6 +242,8 @@ export function poseBones(rig: BodyRig, aspect: number, input: PoseInput): { bon
   out[BONE.foreArmL] = mul(out[BONE.upperArmL], rotAbout(j.elbowL, (arms?.foreL || 0) + pa(BONE.foreArmL)))
   out[BONE.upperArmR] = mul(spine, rotAbout(j.shoulderR, (arms?.upperR || 0) + pa(BONE.upperArmR)))
   out[BONE.foreArmR] = mul(out[BONE.upperArmR], rotAbout(j.elbowR, (arms?.foreR || 0) + pa(BONE.foreArmR)))
+  stretchLimb(out, j.shoulderL, j.elbowL, j.wristL, BONE.upperArmL, BONE.foreArmL, pl(BONE.upperArmL), pl(BONE.foreArmL))
+  stretchLimb(out, j.shoulderR, j.elbowR, j.wristR, BONE.upperArmR, BONE.foreArmR, pl(BONE.upperArmR), pl(BONE.foreArmR))
   // 머리는 전체로 고개 각도만큼 기울도록 (몸 위쪽이 기운 나머지)
   out[BONE.head] = mul(spine, rotAbout(j.neck, h.roll - upperRoll))
   return { bones: out, depth }
@@ -243,6 +260,9 @@ const JOINT_BONE: Record<JointName, number> = {
   hipR: BONE.pelvis, kneeR: BONE.thighR, ankleR: BONE.shinR,
 }
 
+// 길이를 바꿀 수 있는 뼈 (팔·다리)
+export const STRETCHABLE = new Set<number>([BONE.upperArmL, BONE.foreArmL, BONE.upperArmR, BONE.foreArmR, BONE.thighL, BONE.shinL, BONE.thighR, BONE.shinR])
+
 // 포즈를 잡을 때 관절을 끌면 돌아가는 뼈와 그 축 관절
 export const POSE_DRIVE: Partial<Record<JointName, [number, JointName]>> = {
   neck: [BONE.spine, 'waist'],
@@ -253,9 +273,9 @@ export const POSE_DRIVE: Partial<Record<JointName, [number, JointName]>> = {
 }
 
 // 포즈를 적용했을 때 관절 위치 (그림 가로·세로 기준 0~1). 고개는 정면.
-export function posedJoints(rig: BodyRig, aspect: number, pose: number[]): Joints {
+export function posedJoints(rig: BodyRig, aspect: number, pose: number[], poseLen?: number[]): Joints {
   const j = pts(rig.joints, aspect)
-  const { bones } = poseBones(rig, aspect, { head: { yaw: 0, pitch: 0, roll: 0 }, pose })
+  const { bones } = poseBones(rig, aspect, { head: { yaw: 0, pitch: 0, roll: 0 }, pose, poseLen })
   const out = {} as Joints
   for (const k in j) {
     const p = apply(bones[JOINT_BONE[k as JointName]]!, j[k as JointName])
