@@ -22,7 +22,7 @@ export default defineNuxtConfig({
 
   nitro: {
     prerender: {
-      routes: ['/', '/live', '/beta', '/beta/live'],
+      routes: ['/', '/live', '/beta', '/beta/live', '/multi', '/multi/live'],
     },
   },
 })

@@ -375,6 +375,11 @@ export async function cleanupFiles(model: Model) {
   try {
     all.push(...(JSON.parse(localStorage.getItem(SLOTS_KEY) || '[]') || []))
   } catch (e) {}
+  // 멀티(오브젝트 이미지)가 쓰는 파일도 남긴다
+  try {
+    const mm = JSON.parse(localStorage.getItem('ftMulti') || 'null')
+    if (mm) all.push({ layers: (mm.objects || []).map((o: any) => o.file).filter(Boolean).map((f: string) => ({ src: { type: 'file', value: f } })) })
+  } catch (e) {}
   const used = new Set(all.flatMap(m => (m.layers || []).filter(l => l.src?.type == 'file').map(l => l.src.value)))
   const keys = await tx('readonly', s => s.getAllKeys())
   await Promise.all(keys.map(String).filter(k => !used.has(k)).map(deleteFile))

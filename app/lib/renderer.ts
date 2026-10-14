@@ -147,7 +147,7 @@ export interface View {
 }
 
 export interface RendererOptions {
-  layout?: 'center' | 'bottom' // 편집기: 가운데 정렬, 라이브: 아래 정렬
+  layout?: 'center' | 'bottom' | 'fill' // 편집기: 가운데 정렬, 라이브: 아래 정렬, 멀티: 여백 없이 꽉 채움
   onImageError?: (layer: Layer) => void
   onImageSize?: (layer: Layer, width: number, height: number) => void
   maxTexture?: number // 이미지 최대 크기 (확대해서 볼 때는 크게)
@@ -354,7 +354,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
       x = (W - S) / 2
       y = H - S * A
     } else {
-      S = Math.min(W, H / A) * 0.92
+      S = Math.min(W, H / A) * (options.layout == 'fill' ? 1 : 0.92)
       x = (W - S) / 2
       y = (H - S * A) / 2
     }
