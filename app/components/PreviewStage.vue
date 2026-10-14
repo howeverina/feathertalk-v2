@@ -499,11 +499,15 @@ onBeforeUnmount(() => {
     </div>
     <div class="toolbar">
       <span class="label">상태</span>
-      <button class="toggle" :class="{ on: preview.eyesClosed }" @click="preview.eyesClosed = !preview.eyesClosed">눈 감기</button>
-      <button class="toggle" title="한 번 깜빡여요. 라이브에선 2~6초마다 불규칙하게 깜빡여요." @click="blinkOnce">깜빡여 보기</button>
-      <button class="toggle" :class="{ on: preview.mouthOpen }" @click="preview.mouthOpen = !preview.mouthOpen">입 열기</button>
-      <button class="toggle" title="마이크 없이 2.5초 동안 말하는 모습을 보여줘요" @click="talkOnce">말해 보기</button>
-      <span class="tip">라이브에선 눈은 자동으로 깜빡이고, 입은 마이크 소리에 맞춰 움직여요.</span>
+      <!-- 베타: '고개' 줄처럼 버튼을 한 묶음으로 붙인다 -->
+      <component :is="beta ? 'div' : 'span'" :class="beta ? 'seg' : 'loose'">
+        <button :class="{ toggle: !beta, on: preview.eyesClosed }" @click="preview.eyesClosed = !preview.eyesClosed">눈 감기</button>
+        <button :class="{ toggle: !beta }" title="한 번 깜빡여요. 라이브에선 2~6초마다 불규칙하게 깜빡여요." @click="blinkOnce">깜빡여 보기</button>
+        <button :class="{ toggle: !beta, on: preview.mouthOpen }" @click="preview.mouthOpen = !preview.mouthOpen">입 열기</button>
+        <button :class="{ toggle: !beta }" title="마이크 없이 2.5초 동안 말하는 모습을 보여줘요" @click="talkOnce">말해 보기</button>
+      </component>
+      <UiInfoTip v-if="beta" text="라이브에선 눈은 자동으로 깜빡이고, 입은 마이크 소리에 맞춰 움직여요." />
+      <span v-else class="tip">라이브에선 눈은 자동으로 깜빡이고, 입은 마이크 소리에 맞춰 움직여요.</span>
     </div>
     <p class="tip">
       <b>+</b> 얼굴 중심 · <b>점선 원</b> 얼굴 크기 · <b>분홍 점선</b> 머리카락 고정선 · <b>초록 띠</b> 눈 깜빡임 영역(눌림 효과를 켰을 때) — 모두 끌어서 옮길 수 있어요.
@@ -596,6 +600,10 @@ canvas {
 .slot-menu button:disabled {
   color: #c0c6cc;
   cursor: default;
+}
+
+.loose {
+  display: contents;
 }
 
 .toggle {
