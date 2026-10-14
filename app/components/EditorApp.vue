@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 편집기
-import { Bone, CircleHelp, Layers, Play, SlidersHorizontal } from '@lucide/vue'
+import { CircleHelp, Play } from '@lucide/vue'
+import type { EditorTab } from './EditorWorkspace.vue'
 
 useHead({ bodyAttrs: { class: 'editor' } })
 
@@ -8,10 +9,8 @@ const ed = useEditor()
 const beta = useBeta()
 const base = useBase()
 
-// 베타: 오른쪽 설정을 탭으로 나눈다
-type Tab = 'layers' | 'character' | 'body'
-const TABS: [Tab, string, any][] = [['layers', '레이어', Layers], ['character', '캐릭터', SlidersHorizontal], ['body', '몸 리깅', Bone]]
-const tab = ref<Tab>((localStorage.getItem('ftTabBeta') as Tab) || 'layers')
+// 베타: 오른쪽 설정 탭 (시작하기 체크리스트에서도 바꾼다)
+const tab = ref<EditorTab>((localStorage.getItem('ftTabBeta') as EditorTab) || 'layers')
 watch(tab, v => localStorage.setItem('ftTabBeta', v))
 const guideOpen = ref(!localStorage.getItem('ftGuideDone'))
 const importInput = ref<HTMLInputElement>()
@@ -67,27 +66,7 @@ function reset() {
         <GuideCard v-else @close="closeGuide" />
       </template>
 
-      <div class="editor-grid">
-        <PreviewStage />
-        <div v-if="beta">
-          <nav class="tabs" role="tablist">
-            <button v-for="[id, label, icon] in TABS" :key="id" role="tab" :aria-selected="tab == id" :class="{ on: tab == id }" @click="tab = id">
-              <component :is="icon" :size="16" /> {{ label }}
-            </button>
-          </nav>
-          <template v-if="tab == 'layers'">
-            <LayerList />
-            <LayerProps />
-          </template>
-          <GlobalSettings v-else-if="tab == 'character'" />
-          <BodyRigSettings v-else />
-        </div>
-        <div v-else>
-          <LayerList />
-          <LayerProps />
-          <GlobalSettings />
-        </div>
-      </div>
+      <EditorWorkspace v-model:tab="tab" />
 
       <section class="panel">
         <div><b>제작자: 연이나</b></div>
@@ -178,54 +157,8 @@ function reset() {
   max-width: 1200px;
 }
 
-.editor-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
-}
-
-@media (max-width: 860px) {
-  .editor-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 .small {
   color: #aaa;
-}
-
-.tabs {
-  position: sticky;
-  top: 3.6rem;
-  z-index: 10;
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  margin-bottom: 10px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 1px 0 var(--line);
-}
-
-.tabs button {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 0;
-  background: none;
-  border-radius: 9px;
-  padding: 7px 6px;
-  cursor: pointer;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.tabs button.on {
-  background: var(--main);
-  color: white;
 }
 
 .credit {

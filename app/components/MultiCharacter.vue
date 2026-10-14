@@ -17,7 +17,8 @@ let raf = 0
 onMounted(() => {
   renderer = createRenderer(canvas.value!, { layout: 'fill', maxTexture: 2048 })
   if (!renderer) return
-  watch(() => props.model, m => renderer?.setLayers(m.layers, resolveSrc), { immediate: true })
+  // '캐릭터 만들기' 탭에서 레이어나 이미지를 바꾸면 바로 반영
+  watch(() => props.model, m => renderer?.setLayers(toRaw(m).layers, resolveSrc), { immediate: true, deep: true })
 
   const head = new Head()
   const hair = new HairSystem()
@@ -33,7 +34,7 @@ onMounted(() => {
     raf = requestAnimationFrame(frame)
     const dt = (now - last) / 1000
     last = now
-    const m = props.model
+    const m = toRaw(props.model) // 매 프레임 읽으니 반응형 감시 없이
     const t = props.motion ? wander.update(now + offset, 0.5) : { x: 0, y: 0 }
     head.update(dt, headTarget(t.x, t.y, m.rig, 60), m.rig.bounce)
     const h = head.state

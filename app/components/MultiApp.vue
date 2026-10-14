@@ -1,13 +1,20 @@
 <script setup lang="ts">
 // 멀티 설정: 화면 캡처로 누가 말하는지 감지하고, 베타의 1~0번 캐릭터를 한 무대에 올린다.
-import { ChevronDown, ChevronUp, Crop, MonitorUp, Pipette, Play, Trash2 } from '@lucide/vue'
-import { loadSlots, selectStorage, type Model } from '~/lib/model'
+import { ChevronDown, ChevronUp, Crop, MonitorUp, Pipette, Play, Trash2, UserPen, Users } from '@lucide/vue'
+import type { Model } from '~/lib/model'
+import type { EditorTab } from './EditorWorkspace.vue'
 import { DETECT_PRESETS, ScreenWatcher, loadMulti, newObject, saveMulti, type DetectMode, type Rect } from '~/lib/multi'
 
 useHead({ bodyAttrs: { class: 'editor' } })
 
-selectStorage(true)
-const models = shallowRef<Model[]>(loadSlots().slots)
+// 캐릭터 1~0번은 베타 편집기와 같은 슬롯 (여기 '캐릭터 만들기' 탭에서 고치면 무대에 바로 반영)
+const ed = useEditor()
+const models = computed<Model[]>(() => ed.slots)
+
+// 위쪽 탭: 무대·감지 / 캐릭터 만들기
+const page = ref<'stage' | 'make'>((localStorage.getItem('ftMultiPage') as any) || 'stage')
+watch(page, v => localStorage.setItem('ftMultiPage', v))
+const editorTab = ref<EditorTab>('layers')
 const settings = reactive(loadMulti())
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 watch(settings, () => {
@@ -189,13 +196,19 @@ const strictLabel = computed(() => settings.detect.mode == 'syncroom'
     <header class="navbar">
       <h2 class="logo">Feather-Talk 멀티 <span class="beta-badge">BETA</span></h2>
       <div class="nav-actions">
-        <a class="ghost" href="/beta/" title="캐릭터 1~0번은 베타 편집기에서 만들어요">캐릭터 편집 (베타)</a>
         <a class="button" href="/multi/live">라이브 시작 <Play :size="14" /></a>
       </div>
     </header>
 
     <main class="wrapper">
-      <div class="multi-grid">
+      <nav class="page-tabs" role="tablist">
+        <button role="tab" :class="{ on: page == 'stage' }" :aria-selected="page == 'stage'" @click="page = 'stage'"><Users :size="16" /> 무대 · 감지</button>
+        <button role="tab" :class="{ on: page == 'make' }" :aria-selected="page == 'make'" @click="page = 'make'"><UserPen :size="16" /> 캐릭터 만들기</button>
+      </nav>
+
+      <EditorWorkspace v-if="page == 'make'" v-model:tab="editorTab" />
+
+      <div v-show="page == 'stage'" class="multi-grid">
         <div class="left">
           <section class="panel">
             <h3>무대 <UiInfoTip text="캐릭터와 오브젝트를 끌어서 옮기고, 오른쪽 아래 파란 점을 끌어 크기를 바꿔요. 말하는 캐릭터는 초록 테두리로 보여요." /></h3>
@@ -249,7 +262,7 @@ const strictLabel = computed(() => settings.detect.mode == 'syncroom'
           </section>
 
           <section class="panel">
-            <h3>2. 캐릭터 <UiInfoTip text="베타 편집기의 1~0번 캐릭터를 그대로 써요. 무대에 올릴 캐릭터를 켜고, 감지 영역을 지정하세요." /></h3>
+            <h3>2. 캐릭터 <UiInfoTip text="1~0번 캐릭터는 위쪽 '캐릭터 만들기' 탭(베타 편집기와 같은 캐릭터)에서 만들어요. 무대에 올릴 캐릭터를 켜고, 감지 영역을 지정하세요." /></h3>
             <ul class="chars">
               <li v-for="(c, i) in settings.chars" :key="i" :class="{ off: !c.on }">
                 <label class="check"><input v-model="c.on" type="checkbox"> <b>{{ (i + 1) % 10 }}번</b></label>
@@ -353,6 +366,31 @@ const strictLabel = computed(() => settings.detect.mode == 'syncroom'
   margin: 1rem auto;
   padding: 0 16px;
   max-width: 1300px;
+}
+
+.page-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 1rem;
+}
+
+.page-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: white;
+  border-radius: 10px;
+  padding: 7px 14px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.page-tabs button.on {
+  background: var(--main);
+  border-color: var(--main);
+  color: white;
 }
 
 .multi-grid {
