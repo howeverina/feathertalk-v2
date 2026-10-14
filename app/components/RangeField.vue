@@ -14,6 +14,7 @@ const props = withDefaults(defineProps<{
 }>(), { step: 1 })
 
 const value = defineModel<number>({ required: true })
+const beta = useBeta() // 베타는 설명을 ⓘ 안에
 
 function onInput(e: Event) {
   const el = e.target as HTMLInputElement
@@ -34,6 +35,7 @@ function reset() {
   <div class="field">
     <div class="field-head">
       <b>{{ label }}</b>
+      <UiInfoTip v-if="desc && beta" :text="desc" />
       <slot name="icon" />
       <output>{{ format ? format(value) : value }}</output>
     </div>
@@ -42,7 +44,7 @@ function reset() {
       <input type="range" :min :max :step :value="value" @input="onInput" @dblclick="reset">
       <span>{{ right }}</span>
     </div>
-    <p v-if="desc" class="desc">{{ desc }}</p>
+    <p v-if="desc && !beta" class="desc">{{ desc }}</p>
   </div>
 </template>
 

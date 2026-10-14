@@ -1,12 +1,18 @@
 <script setup lang="ts">
 // 편집기
-import { CircleHelp, Play } from '@lucide/vue'
+import { Bone, CircleHelp, Layers, Play, SlidersHorizontal } from '@lucide/vue'
 
 useHead({ bodyAttrs: { class: 'editor' } })
 
 const ed = useEditor()
 const beta = useBeta()
 const base = useBase()
+
+// 베타: 오른쪽 설정을 탭으로 나눈다
+type Tab = 'layers' | 'character' | 'body'
+const TABS: [Tab, string, any][] = [['layers', '레이어', Layers], ['character', '캐릭터', SlidersHorizontal], ['body', '몸 리깅', Bone]]
+const tab = ref<Tab>((localStorage.getItem('ftTabBeta') as Tab) || 'layers')
+watch(tab, v => localStorage.setItem('ftTabBeta', v))
 const guideOpen = ref(!localStorage.getItem('ftGuideDone'))
 const importInput = ref<HTMLInputElement>()
 
@@ -56,11 +62,27 @@ function reset() {
     </header>
 
     <main class="wrapper">
-      <GuideCard v-if="guideOpen" @close="closeGuide" />
+      <template v-if="guideOpen">
+        <StartSteps v-if="beta" @close="closeGuide" @go="tab = $event" />
+        <GuideCard v-else @close="closeGuide" />
+      </template>
 
       <div class="editor-grid">
         <PreviewStage />
-        <div>
+        <div v-if="beta">
+          <nav class="tabs" role="tablist">
+            <button v-for="[id, label, icon] in TABS" :key="id" role="tab" :aria-selected="tab == id" :class="{ on: tab == id }" @click="tab = id">
+              <component :is="icon" :size="16" /> {{ label }}
+            </button>
+          </nav>
+          <template v-if="tab == 'layers'">
+            <LayerList />
+            <LayerProps />
+          </template>
+          <GlobalSettings v-else-if="tab == 'character'" />
+          <BodyRigSettings v-else />
+        </div>
+        <div v-else>
           <LayerList />
           <LayerProps />
           <GlobalSettings />
@@ -171,6 +193,39 @@ function reset() {
 
 .small {
   color: #aaa;
+}
+
+.tabs {
+  position: sticky;
+  top: 3.6rem;
+  z-index: 10;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 10px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 0 var(--line);
+}
+
+.tabs button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  border-radius: 9px;
+  padding: 7px 6px;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.tabs button.on {
+  background: var(--main);
+  color: white;
 }
 
 .credit {

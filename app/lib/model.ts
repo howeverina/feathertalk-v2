@@ -275,6 +275,42 @@ export function saveModel(m: Model) {
   localStorage.setItem(KEY, JSON.stringify(m))
 }
 
+// ---- 베타: 1~0번 캐릭터 슬롯 (슬롯마다 레이어·설정이 따로) ----
+
+const SLOTS_KEY = 'ftSlotsBeta'
+const SLOT_KEY = 'ftSlotBeta'
+export const SLOT_COUNT = 10
+
+// 레이어별 표정 설정에서 N번 표정에서 보이던 레이어만 남긴 캐릭터
+function fromExpression(m: Model, i: number): Model {
+  const copy: Model = JSON.parse(JSON.stringify(m))
+  const layers = copy.layers.filter(l => l.expressions[i])
+  copy.layers = (layers.length ? layers : copy.layers).map(l => ({ ...l, expressions: new Array(10).fill(true) }))
+  return copy
+}
+
+export function loadSlots(): { slots: Model[]; active: number } {
+  const active = Math.min(SLOT_COUNT - 1, Math.max(0, parseInt(localStorage.getItem(SLOT_KEY) || '0') || 0))
+  try {
+    const raw = JSON.parse(localStorage.getItem(SLOTS_KEY) || 'null')
+    if (Array.isArray(raw) && raw.length) {
+      const slots = raw.map((m: any) => normalizeModel(m))
+      while (slots.length < SLOT_COUNT) slots.push(normalizeModel(JSON.parse(JSON.stringify(slots[0]))))
+      return { slots: slots.slice(0, SLOT_COUNT), active }
+    }
+  } catch (e) {
+    console.error('캐릭터 슬롯을 읽지 못했어요', e)
+  }
+  // 처음: 지금 캐릭터를 레이어별 표정 설정에 따라 10개로 나눈다
+  const base = loadModel()
+  return { slots: Array.from({ length: SLOT_COUNT }, (_, i) => fromExpression(base, i)), active }
+}
+
+export function saveSlots(slots: Model[], active: number) {
+  localStorage.setItem(SLOTS_KEY, JSON.stringify(slots))
+  localStorage.setItem(SLOT_KEY, String(active))
+}
+
 export function isVisible(layer: Layer, { expression, eyesClosed, mouthOpen, blink }: FaceState) {
   if (!layer.visible || !layer.expressions[expression]) return false
   const b = blink ?? (eyesClosed ? 1 : 0)
@@ -328,7 +364,7 @@ export function deleteFile(key: string) {
 // 사용하지 않는 파일 정리
 export async function cleanupFiles(model: Model) {
   // 정식판과 베타가 파일 저장소를 함께 쓰므로, 양쪽에서 쓰는 파일을 모두 남긴다
-  const all = [model]
+  const all: any[] = [model]
   for (const key of [MAIN_KEY, BETA_KEY]) {
     if (key == KEY) continue
     try {
@@ -336,6 +372,9 @@ export async function cleanupFiles(model: Model) {
       if (other) all.push(JSON.parse(other))
     } catch (e) {}
   }
+  try {
+    all.push(...(JSON.parse(localStorage.getItem(SLOTS_KEY) || '[]') || []))
+  } catch (e) {}
   const used = new Set(all.flatMap(m => (m.layers || []).filter(l => l.src?.type == 'file').map(l => l.src.value)))
   const keys = await tx('readonly', s => s.getAllKeys())
   await Promise.all(keys.map(String).filter(k => !used.has(k)).map(deleteFile))

@@ -191,6 +191,27 @@ function onWheel(e: WheelEvent) {
   v.zoom = z
 }
 
+// 베타: 캐릭터 슬롯 탭 우클릭 메뉴 (복사 / 붙여넣기)
+const slotMenu = ref<{ x: number; y: number; slot: number } | null>(null)
+function openSlotMenu(e: MouseEvent, slot: number) {
+  const host = (e.currentTarget as HTMLElement).closest('.toolbar')!.getBoundingClientRect()
+  slotMenu.value = { x: e.clientX - host.left, y: e.clientY - host.top + 6, slot }
+}
+function closeSlotMenu() {
+  slotMenu.value = null
+}
+function copySlotFromMenu() {
+  ed.copySlot(slotMenu.value!.slot)
+  closeSlotMenu()
+}
+function pasteSlotFromMenu() {
+  const to = slotMenu.value!.slot, from = ed.clipboard.value!.from
+  closeSlotMenu()
+  if (confirm(`${(from + 1) % 10}번 캐릭터를 ${(to + 1) % 10}번에 붙여넣을까요? ${(to + 1) % 10}번의 지금 설정은 덮어써져요.`)) ed.pasteSlot(to)
+}
+onMounted(() => window.addEventListener('click', closeSlotMenu))
+onBeforeUnmount(() => window.removeEventListener('click', closeSlotMenu))
+
 function fitView() {
   Object.assign(preview.view, { zoom: 1, x: 0, y: 0 })
 }
@@ -342,7 +363,9 @@ onMounted(() => {
   if (!renderer) noGL.value = true
 
   // 레이어 구성/이미지가 바뀌면 렌더러에 알린다 (렌더러는 매 프레임 원본 객체를 읽는다)
-  watch(model, () => renderer?.setLayers(toRaw(model.value).layers, resolveSrc), { deep: true, immediate: true })
+  // 베타는 다른 캐릭터 슬롯의 이미지도 미리 불러 둔다 (슬롯을 바꿀 때 깜빡이지 않게)
+  watch([model, ed.slots], () => renderer?.setLayers(toRaw(model.value).layers, resolveSrc,
+    beta ? toRaw(ed.slots).flatMap(s => toRaw(s).layers) : []), { deep: true, immediate: true })
 
   // 라이브 화면의 '리깅 강도'와 같은 값으로 미리보기 (기본 60)
   const storedRig = parseInt(localStorage.getItem('ftRig') || '')
@@ -381,7 +404,7 @@ onMounted(() => {
       head: h,
       squash: head.squash,
       breath: b,
-      expression: preview.expression,
+      expression: beta ? 0 : preview.expression, // 베타는 표정 대신 캐릭터 슬롯
       eyesClosed: preview.eyesClosed,
       blink: preview.eyesClosed ? 1 : blinker.update(now, false),
       pop: pupilPop(blinker, now),
@@ -438,7 +461,29 @@ onBeforeUnmount(() => {
       </div>
       <label class="check"><input v-model="preview.focus" type="checkbox"> 선택한 레이어만 진하게</label>
     </div>
-    <div class="toolbar">
+    <div v-if="beta" class="toolbar">
+      <span class="label">캐릭터</span>
+      <div class="seg small">
+        <button
+          v-for="i in 10"
+          :key="i"
+          :class="{ on: ed.activeSlot.value == i - 1 }"
+          :title="`${i % 10}번 캐릭터 편집 (라이브에서 숫자키 ${i % 10}) · 우클릭: 복사/붙여넣기`"
+          @click="ed.selectSlot(i - 1)"
+          @contextmenu.prevent="openSlotMenu($event, i - 1)"
+        >
+          {{ i % 10 }}
+        </button>
+      </div>
+      <UiInfoTip>1~0번은 각각 다른 캐릭터예요 (레이어·설정이 따로). 라이브에서 숫자키로 바꿔요. 탭을 우클릭(휴대폰은 길게 누르기)하면 복사·붙여넣기를 할 수 있어요.</UiInfoTip>
+      <div v-if="slotMenu" class="slot-menu" :style="{ left: slotMenu.x + 'px', top: slotMenu.y + 'px' }" @click.stop>
+        <button @click="copySlotFromMenu">{{ (slotMenu.slot + 1) % 10 }}번 캐릭터 복사</button>
+        <button :disabled="!ed.clipboard.value || ed.clipboard.value.from == slotMenu.slot" @click="pasteSlotFromMenu">
+          {{ ed.clipboard.value ? `${(ed.clipboard.value.from + 1) % 10}번 캐릭터를 여기에 붙여넣기` : '붙여넣기 (먼저 복사해 주세요)' }}
+        </button>
+      </div>
+    </div>
+    <div v-else class="toolbar">
       <span class="label">표정</span>
       <div class="seg small">
         <button
@@ -507,6 +552,7 @@ canvas {
 }
 
 .toolbar {
+  position: relative;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -518,6 +564,38 @@ canvas {
   font-weight: 700;
   font-size: 0.85rem;
   min-width: 2.5em;
+}
+
+.slot-menu {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 4px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.slot-menu button {
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.slot-menu button:hover:not(:disabled) {
+  background: #f0faff;
+}
+
+.slot-menu button:disabled {
+  color: #c0c6cc;
+  cursor: default;
 }
 
 .toggle {

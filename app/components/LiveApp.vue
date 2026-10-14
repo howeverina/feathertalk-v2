@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 라이브 화면 (OBS 등에서 캡처)
 import { ArrowLeft, Camera, Crosshair, Maximize, Mic } from '@lucide/vue'
-import { loadModel, resolveSrc, selectStorage } from '~/lib/model'
+import { loadModel, loadSlots, resolveSrc, selectStorage } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
 import { Arms, Blinker, EyeFollow, Head, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, cameraToTarget, headTarget, lookAt } from '~/lib/physics'
 import { WebcamTracker, type WebcamStatus } from '~/lib/webcam'
@@ -50,7 +50,9 @@ const base = useBase()
 const stage = ref<HTMLCanvasElement>()
 const noGL = ref(false)
 selectStorage(beta)
-const model = loadModel()
+// 베타: 1~0번 캐릭터 슬롯 (숫자키로 캐릭터 전체를 바꾼다). 정식판은 레이어별 표정.
+const slotData = beta ? loadSlots() : null
+let model = slotData ? slotData.slots[slotData.active]! : loadModel()
 
 // ---- 베타: 휠로 확대/축소, 우클릭 드래그로 이동 (방송 구도 잡기, 저장됨) ----
 
@@ -105,7 +107,19 @@ let raf = 0
 
 let expression = 0
 function onKey(e: KeyboardEvent) {
-  if (/^[0-9]$/.test(e.key)) expression = (parseInt(e.key) + 9) % 10
+  if (!/^[0-9]$/.test(e.key)) return
+  const i = (parseInt(e.key) + 9) % 10
+  if (!slotData) {
+    expression = i
+    return
+  }
+  model = slotData.slots[i]!
+  applyLayers()
+}
+
+// 지금 캐릭터의 레이어를 그리고, 베타는 다른 슬롯 이미지도 미리 불러 둔다
+function applyLayers() {
+  renderer?.setLayers(model.layers, resolveSrc, slotData ? slotData.slots.flatMap(s => s.layers) : [])
 }
 
 // ---- 마우스 / 자동 모션 ----
@@ -234,7 +248,7 @@ onMounted(() => {
     noGL.value = true
     return
   }
-  renderer.setLayers(model.layers, resolveSrc)
+  applyLayers()
   window.addEventListener('keydown', onKey)
   document.addEventListener('mousemove', onMouseMove)
   document.addEventListener('mousedown', onMouseDown)

@@ -265,16 +265,17 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
     }
   }
 
+  // 텍스처는 레이어 + 이미지 조합으로 구분 (캐릭터 슬롯끼리 같은 레이어를 다른 이미지로 쓸 수 있어서)
+  const texKey = (l: Layer) => l.id + '|' + l.src.type + ':' + l.src.value
+
   function loadTexture(layer: Layer, resolveSrc: (l: Layer) => Promise<string>) {
-    const key = layer.src.type + ':' + layer.src.value
-    const cur = textures.get(layer.id)
-    if (cur && cur.key == key) return
-    if (cur && cur.tex) gl.deleteTexture(cur.tex)
+    const key = texKey(layer)
+    if (textures.has(key)) return
     const entry = { key, tex: null as WebGLTexture | null, ready: false, mid: [0.5, 0.5] as [number, number], top: 0, bottom: 1, points: [] as [number, number][], bone: { key: '', id: 0, skin: null as WebGLBuffer | null } }
-    textures.set(layer.id, entry)
+    textures.set(key, entry)
     if (!layer.src.value) return
     resolveSrc(layer).then(url => {
-      if (!url || textures.get(layer.id) !== entry) return
+      if (!url || textures.get(key) !== entry) return
       const img = new Image()
       if (!url.startsWith('blob:') && !url.startsWith('data:')) img.crossOrigin = 'anonymous'
       img.onload = async () => {
@@ -283,7 +284,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         } catch (e) {}
         options.onImageSize?.(layer, img.naturalWidth, img.naturalHeight)
         const source = await fitImage(img)
-        if (textures.get(layer.id) !== entry) {
+        if (textures.get(key) !== entry) {
           if (source instanceof ImageBitmap) source.close()
           return
         }
@@ -372,21 +373,23 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
   }
 
   return {
-    setLayers(next: Layer[], resolveSrc: (l: Layer) => Promise<string>) {
+    // next: 그릴 레이어. retain: 지금은 안 그리지만 미리 불러 둘 레이어 (다른 캐릭터 슬롯 — 바꿀 때 깜빡이지 않게)
+    setLayers(next: Layer[], resolveSrc: (l: Layer) => Promise<string>, retain: Layer[] = []) {
       layers = next
-      const ids = new Set(next.map(l => l.id))
-      for (const [id, t] of textures) {
-        if (!ids.has(id)) {
+      const all = [...next, ...retain]
+      const keep = new Set(all.map(texKey))
+      for (const [key, t] of textures) {
+        if (!keep.has(key)) {
           if (t.tex) gl.deleteTexture(t.tex)
           if (t.bone.skin) gl.deleteBuffer(t.bone.skin)
-          textures.delete(id)
+          textures.delete(key)
         }
       }
-      for (const l of next) loadTexture(l, resolveSrc)
+      for (const l of all) loadTexture(l, resolveSrc)
     },
 
     isLoaded(layer: Layer) {
-      const t = textures.get(layer.id)
+      const t = textures.get(texKey(layer))
       return !!(t && t.ready)
     },
 
@@ -399,7 +402,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
 
     // 몸 리깅: 레이어가 붙은 뼈 번호 (머리 레이어, 리깅 꺼짐, 아직 안 불러왔으면 null)
     boneOf(l: Layer): number | null {
-      const t = textures.get(l.id)
+      const t = textures.get(texKey(l))
       if (!lastBody || l.part == 'head' || !t || !t.ready) return null
       return boneOf(l, t)
     },
@@ -451,7 +454,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         // 클리핑: 클리핑 안 된 레이어가 기준이 되고, 바로 앞(목록 위)의 클리핑 레이어들은 그 안쪽에만 그린다
         const isMask = !l.clip && i > 0 && !!layers[i - 1]!.clip
         if (!l.clip) gl.clear(gl.STENCIL_BUFFER_BIT)
-        const t = textures.get(l.id)
+        const t = textures.get(texKey(l))
         if (!t || !t.ready || !isVisible(l, state)) continue
         const seg = l.part == 'head' ? 0 : 1
         if (body && seg) useBone(boneOf(l, t), t.bone.skin)

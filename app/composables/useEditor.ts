@@ -1,6 +1,7 @@
 // 편집기 전체가 함께 쓰는 상태 (모델, 선택한 레이어, 미리보기 상태)
 import {
   loadModel, saveModel, newLayer, duplicateLayer, defaultModel, cleanupFiles, putFile, exportJSON, importJSON, selectStorage,
+  loadSlots, saveSlots, normalizeModel,
   type Layer, type LayerSource, type Model, type PresetKey,
 } from '~/lib/model'
 
@@ -9,7 +10,11 @@ export type Handle = 'center' | 'radius' | 'anchor' | 'eyes' | 'eyesSize' | 'bod
 
 function createEditor(beta: boolean) {
   selectStorage(beta)
-  const model = ref<Model>(loadModel())
+  // 베타: 1~0번 캐릭터 슬롯. model은 지금 고른 슬롯을 가리킨다.
+  const initial = beta ? loadSlots() : null
+  const slots = reactive<Model[]>(initial ? initial.slots : [])
+  const activeSlot = ref(initial ? initial.active : 0)
+  const model = ref<Model>(beta ? slots[activeSlot.value]! : loadModel())
   const selectedId = ref<string | null>(model.value.layers[0]?.id ?? null)
   const selected = computed(() => model.value.layers.find(l => l.id == selectedId.value) || null)
   const imageErrors = reactive(new Set<string>()) // 이미지를 못 불러온 레이어 id
@@ -31,22 +36,57 @@ function createEditor(beta: boolean) {
   // ---- 저장 ----
 
   let saveTimer: ReturnType<typeof setTimeout> | undefined
-  watch(model, () => {
+  function save() {
+    saveModel(toRaw(model.value))
+    if (beta) saveSlots(toRaw(slots).map(s => toRaw(s)), activeSlot.value)
+  }
+  watch([model, slots], () => {
     clearTimeout(saveTimer)
-    saveTimer = setTimeout(() => saveModel(toRaw(model.value)), 300)
+    saveTimer = setTimeout(save, 300)
   }, { deep: true })
 
   // '라이브 시작'처럼 페이지를 떠날 때 저장 대기 중인 변경이 사라지지 않도록
   window.addEventListener('pagehide', () => {
     clearTimeout(saveTimer)
-    saveModel(toRaw(model.value))
+    save()
   })
 
   // 파일이 바뀌거나 레이어가 지워질 땐 바로 저장하고 안 쓰는 파일을 정리
   function saveNow() {
     clearTimeout(saveTimer)
-    saveModel(toRaw(model.value))
+    save()
     cleanupFiles(toRaw(model.value)).catch(e => console.error(e))
+  }
+
+  // ---- 베타: 캐릭터 슬롯 ----
+
+  const CLIP_KEY = 'ftSlotClipboardBeta'
+  const clipboard = ref<{ from: number; json: string } | null>((() => {
+    try {
+      return JSON.parse(localStorage.getItem(CLIP_KEY) || 'null')
+    } catch (e) {
+      return null
+    }
+  })())
+
+  function selectSlot(i: number) {
+    activeSlot.value = i
+    model.value = slots[i]!
+    imageErrors.clear()
+    if (!model.value.layers.some(l => l.id == selectedId.value)) selectLayer(model.value.layers[0]?.id ?? null)
+    save()
+  }
+
+  function copySlot(i: number) {
+    clipboard.value = { from: i, json: JSON.stringify(toRaw(slots[i])) }
+    localStorage.setItem(CLIP_KEY, JSON.stringify(clipboard.value))
+  }
+
+  function pasteSlot(i: number) {
+    if (!clipboard.value) return
+    slots[i] = normalizeModel(JSON.parse(clipboard.value.json))
+    if (i == activeSlot.value) selectSlot(i)
+    saveNow()
   }
 
   // ---- 레이어 ----
@@ -124,7 +164,8 @@ function createEditor(beta: boolean) {
   // ---- 전체 ----
 
   function replaceModel(m: Model) {
-    model.value = m
+    if (beta) slots[activeSlot.value] = m
+    model.value = beta ? slots[activeSlot.value]! : m
     imageErrors.clear()
     selectLayer(m.layers[0]?.id ?? null)
     saveNow()
@@ -151,6 +192,7 @@ function createEditor(beta: boolean) {
 
   return {
     model, selectedId, selected, imageErrors, preview,
+    slots, activeSlot, clipboard, selectSlot, copySlot, pasteSlot,
     ensureVisible, selectLayer, addLayer, duplicateSelected, removeLayer, moveLayer, setSource, uploadFile,
     reset, exportBackup, importBackup,
   }
