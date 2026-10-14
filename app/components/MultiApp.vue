@@ -45,7 +45,8 @@ async function toggleCapture() {
     return
   }
   capturing.value = true
-  watcher.run(() => settings, () => mode.value == 'crop')
+  // '캐릭터 만들기' 탭을 보는 동안은 감지·미리보기를 쉰다
+  watcher.run(() => settings, () => mode.value == 'crop', () => page.value == 'make')
 }
 watcher.onStop = () => {
   capturing.value = false
@@ -212,7 +213,7 @@ const strictLabel = computed(() => settings.detect.mode == 'syncroom'
         <div class="left">
           <section class="panel">
             <h3>무대 <UiInfoTip text="캐릭터와 오브젝트를 끌어서 옮기고, 오른쪽 아래 파란 점을 끌어 크기를 바꿔요. 말하는 캐릭터는 초록 테두리로 보여요." /></h3>
-            <MultiStage :settings="settings" :models="models" :talking="talking" editable />
+            <MultiStage :settings="settings" :models="models" :talking="talking" editable :paused="page == 'make'" />
           </section>
           <section class="panel">
             <h3>레이어 순서 <small>위에 있을수록 앞에 그려져요</small></h3>

@@ -8,6 +8,7 @@ const props = defineProps<{
   models: Model[]
   talking: boolean[]
   editable?: boolean
+  paused?: boolean // 안 보일 때 캐릭터 그리기를 쉰다
 }>()
 
 const stage = ref<HTMLDivElement>()
@@ -78,7 +79,7 @@ function onUp() {
       @pointerup="onUp"
       @pointercancel="onUp"
     >
-      <MultiCharacter v-if="it.kind == 'char' && models[it.i]" :model="models[it.i]!" :talking="talking[it.i]!" :motion="settings.chars[it.i]!.motion" />
+      <MultiCharacter v-if="it.kind == 'char' && models[it.i]" :model="models[it.i]!" :talking="talking[it.i]!" :motion="settings.chars[it.i]!.motion" :paused="paused" />
       <img v-else-if="it.kind == 'obj'" :src="urls[(it.o as any).file]" alt="" draggable="false">
       <template v-if="editable">
         <span class="tag">{{ it.kind == 'char' ? `${(it.i + 1) % 10}번` : (it.o as any).name || '오브젝트' }}</span>

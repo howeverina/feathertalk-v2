@@ -190,10 +190,11 @@ export class ScreenWatcher {
     this.onStop?.()
   }
 
-  // 초당 15번 검사 시작
-  run(get: () => MultiSettings, full: () => boolean = () => false) {
+  // 초당 15번 검사 시작 (skip이 참이면 그동안은 쉰다 — 캡처는 켜 둔 채로)
+  run(get: () => MultiSettings, full: () => boolean = () => false, skip: () => boolean = () => false) {
     clearInterval(this.timer)
     this.timer = setInterval(() => {
+      if (skip()) return
       this.tick(get(), full())
       this.onFrame?.()
     }, 66)

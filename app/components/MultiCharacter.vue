@@ -8,6 +8,7 @@ const props = defineProps<{
   model: Model
   talking: boolean
   motion: boolean // 자동 모션 (끄면 정면을 보고 가만히, 깜빡임·호흡·입은 그대로)
+  paused?: boolean // 안 보일 때(다른 탭) 그리기를 쉰다
 }>()
 
 const canvas = ref<HTMLCanvasElement>()
@@ -32,6 +33,10 @@ onMounted(() => {
 
   function frame(now: number) {
     raf = requestAnimationFrame(frame)
+    if (props.paused) {
+      last = now // 다시 그릴 때 시간이 튀지 않게
+      return
+    }
     const dt = (now - last) / 1000
     last = now
     const m = toRaw(props.model) // 매 프레임 읽으니 반응형 감시 없이
