@@ -143,6 +143,7 @@ export interface PoseInput {
   squash?: [number, number]
   stretch?: number // 호흡: 몸 세로 늘어남
   arms?: ArmAngles
+  pose?: number[] // 연주 포즈: 뼈마다 더 돌릴 각도 (rad, BONE 번호 순서)
 }
 
 // 기울기 비율: 몸 위쪽은 고개 기울기의 35%, 몸 아래쪽(골반)은 반대로 10% + 골반이 밀린 만큼
@@ -167,7 +168,7 @@ function segmentMap(a: P, b: P, a2: P, b2: P): Aff {
 
 // 다리: 발목은 바닥에 그대로 두고, 엉덩이가 내려앉은 만큼 무릎이 굽는다.
 // 쉴 때 무릎이 다리 선에서 벗어나 있던 만큼은 유지하고, 굽을수록 안쪽(다른 다리 쪽)으로 살짝 모인다.
-function leg(hip: P, knee: P, ankle: P, hip2: P, inward: number): [Aff, Aff, number] {
+function leg(hip: P, knee: P, ankle: P, hip2: P, inward: number): [Aff, Aff, number, P] {
   const v = { x: ankle.x - hip.x, y: ankle.y - hip.y }, D0 = Math.hypot(v.x, v.y) || 1e-6
   const u = { x: v.x / D0, y: v.y / D0 }, n = { x: -u.y, y: u.x }
   const tk = ((knee.x - hip.x) * u.x + (knee.y - hip.y) * u.y) / D0
@@ -180,7 +181,7 @@ function leg(hip: P, knee: P, ankle: P, hip2: P, inward: number): [Aff, Aff, num
   const side = Math.sign(n2.x * inward) || 1
   const off = ek + side * bend * L1 * 1.2
   const knee2 = { x: hip2.x + u2.x * tk * D + n2.x * off, y: hip2.y + u2.y * tk * D + n2.y * off }
-  return [segmentMap(hip, knee, hip2, knee2), segmentMap(knee, ankle, knee2, ankle), bend]
+  return [segmentMap(hip, knee, hip2, knee2), segmentMap(knee, ankle, knee2, ankle), bend, knee2]
 }
 
 // 뼈마다 쉴 때 → 지금 자세로 옮기는 변환 (부모에서 자식 순서로 쌓는다)과,
@@ -203,23 +204,64 @@ export function poseBones(rig: BodyRig, aspect: number, input: PoseInput): { bon
   out[BONE.root] = pelvis
   out[BONE.pelvis] = pelvis
   const depth = new Array(BONE_COUNT).fill(0)
-  let bend: number
-  ;[out[BONE.thighL], out[BONE.shinL], bend] = leg(j.hipL, j.kneeL, j.ankleL, apply(pelvis, j.hipL), hipC.x - j.hipL.x || 1)
-  depth[BONE.thighL] = depth[BONE.shinL] = bend
-  ;[out[BONE.thighR], out[BONE.shinR], bend] = leg(j.hipR, j.kneeR, j.ankleR, apply(pelvis, j.hipR), hipC.x - j.hipR.x || -1)
-  depth[BONE.thighR] = depth[BONE.shinR] = bend
+  const P = input.pose || []
+  const pa = (b: number) => P[b] || 0
+  // 다리: 발을 바닥에 붙인 채 무릎을 굽힌 뒤, 연주 포즈가 있으면 엉덩이·무릎 기준으로 더 돌린다
+  for (const [hip, knee, ankle, thigh, shin, inward] of [
+    [j.hipL, j.kneeL, j.ankleL, BONE.thighL, BONE.shinL, hipC.x - j.hipL.x || 1],
+    [j.hipR, j.kneeR, j.ankleR, BONE.thighR, BONE.shinR, hipC.x - j.hipR.x || -1],
+  ] as const) {
+    const hip2 = apply(pelvis, hip)
+    const [t, s, bend, knee2] = leg(hip, knee, ankle, hip2, inward)
+    const rThigh = rotAbout(hip2, pa(thigh))
+    out[thigh] = mul(rThigh, t)
+    out[shin] = mul(rThigh, mul(rotAbout(knee2, pa(shin)), s))
+    depth[thigh] = depth[shin] = bend
+  }
 
   // 상체: 골반에 붙어 따라 움직이되 기울기는 골반이 기운 만큼 되돌려 원래 각도(upperRoll)를 유지하고,
   // 숨 쉴 때 가슴이 부푼다
-  const spine = mul(pelvis, mul(rotAbout(j.waist, upperRoll - lowerRoll), scaleAbout(j.waist, sx, sy * (1 + (input.stretch || 0)))))
+  const spine = mul(pelvis, mul(rotAbout(j.waist, upperRoll - lowerRoll + pa(BONE.spine)), scaleAbout(j.waist, sx, sy * (1 + (input.stretch || 0)))))
   out[BONE.spine] = spine
-  out[BONE.upperArmL] = mul(spine, rotAbout(j.shoulderL, arms?.upperL || 0))
-  out[BONE.foreArmL] = mul(out[BONE.upperArmL], rotAbout(j.elbowL, arms?.foreL || 0))
-  out[BONE.upperArmR] = mul(spine, rotAbout(j.shoulderR, arms?.upperR || 0))
-  out[BONE.foreArmR] = mul(out[BONE.upperArmR], rotAbout(j.elbowR, arms?.foreR || 0))
+  out[BONE.upperArmL] = mul(spine, rotAbout(j.shoulderL, (arms?.upperL || 0) + pa(BONE.upperArmL)))
+  out[BONE.foreArmL] = mul(out[BONE.upperArmL], rotAbout(j.elbowL, (arms?.foreL || 0) + pa(BONE.foreArmL)))
+  out[BONE.upperArmR] = mul(spine, rotAbout(j.shoulderR, (arms?.upperR || 0) + pa(BONE.upperArmR)))
+  out[BONE.foreArmR] = mul(out[BONE.upperArmR], rotAbout(j.elbowR, (arms?.foreR || 0) + pa(BONE.foreArmR)))
   // 머리는 전체로 고개 각도만큼 기울도록 (몸 위쪽이 기운 나머지)
   out[BONE.head] = mul(spine, rotAbout(j.neck, h.roll - upperRoll))
   return { bones: out, depth }
+}
+
+// ---- 연주 포즈 편집 ----
+
+// 관절마다 어느 뼈의 어느 쪽 끝인지 (자세를 잡았을 때 관절 위치 계산용)
+const JOINT_BONE: Record<JointName, number> = {
+  neck: BONE.spine, waist: BONE.pelvis,
+  shoulderL: BONE.spine, elbowL: BONE.upperArmL, wristL: BONE.foreArmL,
+  shoulderR: BONE.spine, elbowR: BONE.upperArmR, wristR: BONE.foreArmR,
+  hipL: BONE.pelvis, kneeL: BONE.thighL, ankleL: BONE.shinL,
+  hipR: BONE.pelvis, kneeR: BONE.thighR, ankleR: BONE.shinR,
+}
+
+// 포즈를 잡을 때 관절을 끌면 돌아가는 뼈와 그 축 관절
+export const POSE_DRIVE: Partial<Record<JointName, [number, JointName]>> = {
+  neck: [BONE.spine, 'waist'],
+  elbowL: [BONE.upperArmL, 'shoulderL'], wristL: [BONE.foreArmL, 'elbowL'],
+  elbowR: [BONE.upperArmR, 'shoulderR'], wristR: [BONE.foreArmR, 'elbowR'],
+  kneeL: [BONE.thighL, 'hipL'], ankleL: [BONE.shinL, 'kneeL'],
+  kneeR: [BONE.thighR, 'hipR'], ankleR: [BONE.shinR, 'kneeR'],
+}
+
+// 포즈를 적용했을 때 관절 위치 (그림 가로·세로 기준 0~1). 고개는 정면.
+export function posedJoints(rig: BodyRig, aspect: number, pose: number[]): Joints {
+  const j = pts(rig.joints, aspect)
+  const { bones } = poseBones(rig, aspect, { head: { yaw: 0, pitch: 0, roll: 0 }, pose })
+  const out = {} as Joints
+  for (const k in j) {
+    const p = apply(bones[JOINT_BONE[k as JointName]]!, j[k as JointName])
+    out[k as JointName] = { x: p.x, y: p.y / aspect }
+  }
+  return out
 }
 
 // 편집기에서 뼈대를 그릴 때 쓰는 선 (관절 이름 쌍)

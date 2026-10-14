@@ -2,7 +2,7 @@
 // 멀티 무대 위 캐릭터 하나. 웹캠·마우스 없이 자동 모션으로 움직이고, 감지되면 말한다.
 import { resolveSrc, type Model } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
-import { Arms, Blinker, HairSystem, Head, Mouth, Wander, breath, headTarget, mouthState, pupilPop } from '~/lib/physics'
+import { Arms, Blinker, HairSystem, Head, PosePlayer, Mouth, Wander, breath, headTarget, mouthState, pupilPop } from '~/lib/physics'
 
 const props = defineProps<{
   model: Model
@@ -27,6 +27,7 @@ onMounted(() => {
   const mouth = new Mouth()
   const arms = new Arms()
   const wander = new Wander()
+  const posePlayer = new PosePlayer()
   // 캐릭터마다 박자가 겹치지 않도록 시작 시간을 어긋나게
   const offset = Math.random() * 5000
   let last = performance.now()
@@ -46,6 +47,8 @@ onMounted(() => {
     const b = breath((now + offset) / 1000, m.rig.breath, m.center)
     renderer!.render({
       aspect: m.aspect, body: m.body, arms: arms.update(dt, h.roll * 0.35, now / 1000), hairToContent: true,
+      // 연주 포즈: 감지되면(연주 중) 동작 1·2를 오간다
+      pose: posePlayer.update(dt, props.talking, m.body.poses, m.body.playSpeed, (now + offset) / 1000),
       center: m.center,
       head: h,
       squash: head.squash,

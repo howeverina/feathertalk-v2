@@ -6,6 +6,15 @@ const { model, preview } = useEditor()
 const percent = (v: number) => Math.round(v * 100) + '%'
 const strength = (v: number) => v + '%'
 
+function resetPose(k: 'a' | 'b') {
+  if (confirm(`동작 ${k == 'a' ? 1 : 2}를 기본 자세로 되돌릴까요?`)) model.value.body.poses[k] = new Array(12).fill(0)
+}
+
+function editPose(k: null | 'a' | 'b') {
+  preview.poseEdit = k
+  if (k) preview.playTest = false
+}
+
 function resetJoints() {
   if (confirm('관절 위치를 기본값으로 되돌릴까요?')) model.value.body.joints = defaultJoints()
 }
@@ -69,6 +78,33 @@ const bodyLayers = computed(() => model.value.layers.filter(l => l.part == 'body
           <RangeField
             v-model="model.body.radius" label="몸통 두께" left="얇게" right="두껍게" :min="0.02" :max="0.5" :step="0.005" :def="0.15" :format="percent"
             desc="몸통 원기둥의 반지름이에요. 미리보기에서 허리 양옆 점선을 끌어도 돼요."
+          />
+        </li>
+        <li>
+          <div class="step-head">
+            <span class="num">4</span><b>연주 포즈</b> <small class="opt">선택</small>
+            <UiInfoTip>
+              악기를 연주할 때의 동작 1·2를 직접 만들어요. 동작을 고른 채 미리보기의 관절점을 끌면 그 뼈가 돌아가요
+              (팔꿈치 → 팔 위쪽, 손목 → 팔 아래쪽, 무릎 → 다리 위쪽, 발목 → 다리 아래쪽, 목 → 몸 위쪽).
+              연주 중(멀티에서는 감지될 때, 라이브에서는 마이크 소리가 날 때)에는 동작 1·2를 오가고, 끝나면 기본 자세로 돌아가요.
+              드럼·피아노처럼 앞에 두는 악기는 레이어 부위를 '고정'으로 두면 움직이지 않아요.
+            </UiInfoTip>
+          </div>
+          <div class="seg pose-seg">
+            <button :class="{ on: !preview.poseEdit }" @click="editPose(null)">기본 자세 (관절 위치)</button>
+            <button :class="{ on: preview.poseEdit == 'a' }" @click="editPose('a')">동작 1</button>
+            <button :class="{ on: preview.poseEdit == 'b' }" @click="editPose('b')">동작 2</button>
+          </div>
+          <p v-if="preview.poseEdit" class="desc">관절점을 끌어 동작 {{ preview.poseEdit == 'a' ? 1 : 2 }}의 자세를 잡아요.</p>
+          <div class="row">
+            <button class="plain" :class="{ on: preview.playTest }" @click="preview.playTest = !preview.playTest; preview.poseEdit = null">
+              {{ preview.playTest ? '연주 미리보기 멈추기' : '연주 미리보기' }}
+            </button>
+            <button v-if="preview.poseEdit" class="plain" @click="resetPose(preview.poseEdit)">이 동작 초기화</button>
+          </div>
+          <RangeField
+            v-model="model.body.playSpeed" label="연주 속도" left="느리게" right="빠르게" :min="0.5" :max="6" :step="0.1" :def="2" :format="v => v.toFixed(1) + '회/초'"
+            desc="연주 중에 동작 1과 2를 1초에 몇 번 오갈지예요."
           />
         </li>
       </ol>
@@ -166,6 +202,21 @@ const bodyLayers = computed(() => model.value.layers.filter(l => l.part == 'body
 
 .row {
   margin-top: 8px;
+}
+
+.opt {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.pose-seg {
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.plain.on {
+  border-color: #f59e0b;
+  color: #b45309;
 }
 
 .parts {

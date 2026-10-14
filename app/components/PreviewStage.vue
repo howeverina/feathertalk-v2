@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { JOINTS, resolveSrc, type JointName, type Layer } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
-import { Arms, Blinker, Head, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
-import { BONE_LINES, BONE_NAMES, mirrorOf } from '~/lib/skeleton'
+import { Arms, Blinker, Head, PosePlayer, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, headTarget, lookAt } from '~/lib/physics'
+import { BONE_LINES, BONE_NAMES, POSE_DRIVE, mirrorOf, posedJoints } from '~/lib/skeleton'
 import { createPinch } from '~/lib/gesture'
 import { createAspectTracker } from '~/lib/aspect'
 import type { Handle, MotionMode } from '~/composables/useEditor'
@@ -47,7 +47,13 @@ function setMode(mode: MotionMode) {
 }
 
 // 몸 리깅 관절을 보여줄지 (베타)
-const rigOn = () => beta && model.value.body.enabled && preview.showJoints
+const rigOn = () => beta && model.value.body.enabled && (preview.showJoints || !!preview.poseEdit)
+
+// 연주 포즈를 잡는 중이면 그 포즈를 적용한 관절 위치, 아니면 쉴 때 관절 위치
+function jointsShown() {
+  const b = model.value.body
+  return preview.poseEdit ? posedJoints(toRaw(b), model.value.aspect, toRaw(b.poses[preview.poseEdit])) : b.joints
+}
 
 // ---- 핸들 (얼굴 중심, 얼굴 크기, 머리카락 고정선, 눈 영역, 관절) ----
 
@@ -77,8 +83,10 @@ function hitTest(p: { x: number; y: number }): Handle | null {
   const [x, y, S, SH] = renderer.cssRect()
   if (rigOn()) {
     const body = model.value.body
+    const shown = jointsShown()
     for (const name of Object.keys(JOINTS) as JointName[]) {
-      const j = body.joints[name]
+      if (preview.poseEdit && !POSE_DRIVE[name]) continue
+      const j = shown[name]
       if (Math.hypot(p.x - (x + j.x * S), p.y - (y + j.y * SH)) < 9) return `joint:${name}`
     }
     const w = body.joints.waist
@@ -140,7 +148,22 @@ function onPointerMove(e: PointerEvent) {
     const round = (v: number) => Math.round(v * 200) / 200
     const c = model.value.center
     const drag = preview.drag
-    if (drag.startsWith('joint:')) {
+    if (drag.startsWith('joint:') && preview.poseEdit) {
+      // 연주 포즈: 관절을 끌면 그 관절로 이어진 뼈가 축 관절을 중심으로 돌아간다
+      const name = drag.slice(6) as JointName
+      const drive = POSE_DRIVE[name]
+      if (drive) {
+        const [bone, pivotName] = drive
+        const A = model.value.aspect
+        const pose = model.value.body.poses[preview.poseEdit]
+        const J = jointsShown(), pv = J[pivotName], ch = J[name]
+        const cur = Math.atan2((ch.y - pv.y) * A, ch.x - pv.x)
+        const want = Math.atan2((my - pv.y) * A, mx - pv.x)
+        let d = want - cur
+        d = Math.atan2(Math.sin(d), Math.cos(d))
+        pose[bone] = Math.round(((pose[bone] || 0) + d) * 1000) / 1000
+      }
+    } else if (drag.startsWith('joint:')) {
       // 관절: 좌우 대칭이면 짝 관절도 허리 기준으로 반대편에 같이 옮긴다
       const name = drag.slice(6) as JointName
       const body = model.value.body
@@ -284,7 +307,7 @@ function drawOverlay() {
 
   // 몸 리깅 뼈대: 뼈 선, 몸통 두께, 관절점
   if (rigOn()) {
-    const J = m.body.joints
+    const J = jointsShown()
     const at = (n: JointName) => [x + J[n].x * S, y + J[n].y * SH] as const
     ctx.strokeStyle = 'rgba(245, 158, 11, 0.9)'
     ctx.lineWidth = 3
@@ -307,9 +330,10 @@ function drawOverlay() {
     ctx.stroke()
     ctx.setLineDash([])
     for (const name of Object.keys(JOINTS) as JointName[]) {
+      if (preview.poseEdit && !POSE_DRIVE[name]) continue
       const [px, py] = at(name)
       const on = active(`joint:${name}`)
-      ctx.fillStyle = name == 'neck' || name == 'waist' ? '#f59e0b' : '#fbbf24'
+      ctx.fillStyle = preview.poseEdit ? '#ec4899' : name == 'neck' || name == 'waist' ? '#f59e0b' : '#fbbf24'
       ctx.beginPath()
       ctx.arc(px, py, on ? 8 : 6, 0, Math.PI * 2)
       ctx.fill()
@@ -372,6 +396,7 @@ onMounted(() => {
   const rigStrength = isNaN(storedRig) ? 60 : storedRig
   const head = new Head()
   const hair = new HairSystem()
+  const posePlayer = new PosePlayer()
   let last = performance.now()
   let frameNo = 0
 
@@ -392,14 +417,18 @@ onMounted(() => {
 
     if (preview.mode == 'auto') preview.target = wander.update(now)
     // 핸들을 끄는 동안이나 정면 고정일 땐 정면을 본다
-    const t = preview.drag || preview.mode == 'still' ? { x: 0, y: 0 } : preview.target
+    const t = preview.drag || preview.mode == 'still' || preview.poseEdit ? { x: 0, y: 0 } : preview.target
     head.update(dt, headTarget(t.x, t.y, m.rig, rigStrength), m.rig.bounce)
     const h = head.state
     const b = breath(now / 1000, m.rig.breath, m.center)
 
     if (beta) renderer?.setView(toRaw(preview.view))
     renderer?.render({
-      ...(beta ? { aspect: m.aspect, body: m.body, arms: arms.update(dt, h.roll * 0.35, now / 1000), hairToContent: true } : {}),
+      ...(beta ? {
+        aspect: m.aspect, body: m.body, arms: arms.update(dt, h.roll * 0.35, now / 1000), hairToContent: true,
+        // 연주 포즈: 편집 중이면 그 동작 그대로, 아니면 '연주 미리보기'일 때 동작 1·2를 오간다
+        pose: preview.poseEdit ? m.body.poses[preview.poseEdit] : posePlayer.update(dt, preview.playTest, m.body.poses, m.body.playSpeed, now / 1000),
+      } : {}),
       center: m.center,
       head: h,
       squash: head.squash,

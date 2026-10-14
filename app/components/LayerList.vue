@@ -15,6 +15,7 @@ function badges(l: Layer) {
   else if (!l.src.value) out.push(['이미지 없음', ''])
   if (l.clip) out.push(['클리핑', 'clip'])
   if (l.part == 'body') out.push([preview.layerBones[l.id] || '몸', preview.layerBones[l.id] ? 'bone' : ''])
+  if (l.part == 'fixed') out.push(['고정', ''])
   if (l.show != 'always') out.push([showLabel[l.show]!, ''])
   // 흔들림 물리는 머리카락·장식·옷자락 모두 '물리'로 (정식판은 예전 표기)
   if (l.hair.enabled && (l.part != 'body' || beta)) out.push([beta ? '물리' : l.hair.dir == 'up' ? '장식 물리' : '머리카락', 'hair'])

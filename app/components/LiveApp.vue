@@ -3,7 +3,7 @@
 import { ArrowLeft, Camera, Crosshair, Maximize, Mic } from '@lucide/vue'
 import { loadModel, loadSlots, resolveSrc, selectStorage } from '~/lib/model'
 import { createRenderer, type Renderer } from '~/lib/renderer'
-import { Arms, Blinker, EyeFollow, Head, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, cameraToTarget, headTarget, lookAt } from '~/lib/physics'
+import { Arms, Blinker, EyeFollow, Head, PosePlayer, Mouth, mouthState, pupilPop, HairSystem, Wander, breath, cameraToTarget, headTarget, lookAt } from '~/lib/physics'
 import { WebcamTracker, type WebcamStatus } from '~/lib/webcam'
 import { createPinch } from '~/lib/gesture'
 import { createAspectTracker } from '~/lib/aspect'
@@ -268,6 +268,7 @@ onMounted(() => {
   const eyeFollow = new EyeFollow()
   const mouth = new Mouth()
   const arms = new Arms()
+  const posePlayer = new PosePlayer()
   let last = performance.now()
 
   function frame(now: number) {
@@ -299,7 +300,9 @@ onMounted(() => {
     if (beta) renderer!.setView(view)
     renderer!.render({
       // 베타: 세로로 긴 그림, 몸 리깅
-      ...(beta ? { aspect: model.aspect, body: model.body, arms: arms.update(dt, h.roll * 0.35, now / 1000), hairToContent: true } : {}),
+      // 베타: 세로로 긴 그림, 몸 리깅, 연주 포즈 (마이크 소리가 날 때 동작 1·2를 오간다)
+      ...(beta ? { aspect: model.aspect, body: model.body, arms: arms.update(dt, h.roll * 0.35, now / 1000), hairToContent: true,
+        pose: posePlayer.update(dt, isTalking, model.body.poses, model.body.playSpeed, now / 1000) } : {}),
       center: model.center,
       head: h,
       squash: head.squash,

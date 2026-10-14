@@ -15,7 +15,7 @@ uniform vec3 uCenter;    // 얼굴 중심 x, y, 반지름
 uniform vec3 uHead;      // yaw, pitch, roll (rad)
 uniform vec2 uSquash;
 uniform vec2 uBreath;    // 몸 늘어남, 머리 오르내림
-uniform float uSeg;      // 0: 머리, 1: 몸
+uniform float uSeg;      // 0: 머리, 1: 몸, 2: 고정 (아무 움직임도 따라가지 않음)
 uniform float uRig;      // 몸 리깅을 켰으면 1
 uniform vec2 uWaist;     // 허리 관절 (몸통 원기둥 중심선)
 uniform float uBodyR;    // 몸통 원기둥 반지름
@@ -73,7 +73,9 @@ void main() {
     m = a + rot(m - a, uHairAngle * w) + uHairOffset * w;
   }
 
-  if (uSeg < 0.5) {
+  if (uSeg > 1.5) {
+    // 고정: 그대로
+  } else if (uSeg < 0.5) {
     // 머리: 얼굴 중심을 기준으로 한 구 모양 곡면 위에 있다고 보고 회전
     vec2 p = m - uCenter.xy;
     float r2 = clamp(dot(p, p) / (uCenter.z * uCenter.z), 0.0, 1.0);
@@ -94,7 +96,9 @@ void main() {
     m.y = uWaist.y + dy * cos(uBodyAng.y * upperW) + z * sin(uBodyAng.y * upperW);
   }
 
-  if (uRig > 0.5) {
+  if (uSeg > 1.5) {
+    // 고정
+  } else if (uRig > 0.5) {
     // 뼈대를 따라 움직인다 (기울기, 호흡, 팔 흔들림은 뼈 변환에 들어 있다)
     if (uSeg < 0.5) m = bone(${BONE.head}.0, m);
     else m = bone(aBone, m);
@@ -108,7 +112,7 @@ void main() {
   }
 
   vec2 px = uRect.xy + m * uRect.z;
-  float z = uRig > 0.5 && uSeg > 0.5 ? -uBoneZ[int(aBone + 0.5)] : 0.0;
+  float z = uRig > 0.5 && uSeg > 0.5 && uSeg < 1.5 ? -uBoneZ[int(aBone + 0.5)] : 0.0;
   gl_Position = vec4(px.x / uRes.x * 2.0 - 1.0, 1.0 - px.y / uRes.y * 2.0, z, 1.0);
 }`
 
@@ -137,6 +141,7 @@ export interface RenderState extends FaceState {
   aspect?: number // 그림 세로 ÷ 가로 (기본 1)
   body?: Model['body'] // 몸 리깅 (enabled일 때만)
   arms?: ArmAngles // 팔 흔들림
+  pose?: number[] // 연주 포즈 (뼈마다 더 돌릴 각도)
   hairToContent?: boolean // 흔들림 크기를 그림 끝이 아니라 그 레이어 그림의 끝 기준으로 (베타)
 }
 
@@ -403,7 +408,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
     // 몸 리깅: 레이어가 붙은 뼈 번호 (머리 레이어, 리깅 꺼짐, 아직 안 불러왔으면 null)
     boneOf(l: Layer): number | null {
       const t = textures.get(texKey(l))
-      if (!lastBody || l.part == 'head' || !t || !t.ready) return null
+      if (!lastBody || l.part != 'body' || !t || !t.ready) return null
       return boneOf(l, t)
     },
 
@@ -439,7 +444,7 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         gl.uniform2f(u.uWaist, body.joints.waist.x, body.joints.waist.y * A)
         gl.uniform1f(u.uBodyR, Math.max(0.01, body.radius))
         gl.uniform3f(u.uBodyAng, h.yaw * f * 1.4, h.pitch * f * 0.8, h.yaw * f * 0.4)
-        const pose = poseBones(body, A, { head: h, squash: state.squash, stretch: state.breath?.bodyStretch, arms: state.arms })
+        const pose = poseBones(body, A, { head: h, squash: state.squash, stretch: state.breath?.bodyStretch, arms: state.arms, pose: state.pose })
         gl.uniform4fv(u.uBoneM, pose.bones.flatMap(t => [t[0], t[1], t[2], t[3]]))
         gl.uniform2fv(u.uBoneT, pose.bones.flatMap(t => [t[4], t[5]]))
         gl.uniform1fv(u.uBoneZ, pose.depth)
@@ -456,8 +461,8 @@ export function createRenderer(canvas: HTMLCanvasElement, options: RendererOptio
         if (!l.clip) gl.clear(gl.STENCIL_BUFFER_BIT)
         const t = textures.get(texKey(l))
         if (!t || !t.ready || !isVisible(l, state)) continue
-        const seg = l.part == 'head' ? 0 : 1
-        if (body && seg) useBone(boneOf(l, t), t.bone.skin)
+        const seg = l.part == 'head' ? 0 : l.part == 'fixed' ? 2 : 1
+        if (body && seg == 1) useBone(boneOf(l, t), t.bone.skin)
         else useBone(BONE.head, null)
         // 흔들림 물리는 HairSystem이 계산한 레이어만 (정식판은 머리 레이어만, 베타는 몸 레이어도)
         const hair = l.hair.enabled && state.hair && state.hair.get(l.id)

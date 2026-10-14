@@ -40,8 +40,9 @@ export interface Layer {
   pop: boolean // 깜빡일 때 눌렸다가 통통 튀며 돌아오기 (눈동자용)
 }
 
-// head: 머리(구 모양으로 회전), body: 몸 (몸 리깅을 켜면 가까운 뼈를 자동으로 따라간다)
-export type Part = 'head' | 'body'
+// head: 머리(구 모양으로 회전), body: 몸 (몸 리깅을 켜면 가까운 뼈를 자동으로 따라간다),
+// fixed: 고정 (드럼·피아노처럼 앞에 두는 악기 등, 어떤 움직임도 따라가지 않음 — 베타)
+export type Part = 'head' | 'body' | 'fixed'
 
 // 관절. L/R은 화면 기준 왼쪽/오른쪽. x는 그림 가로 기준 0~1, y는 그림 세로 기준 0~1
 export const JOINTS = {
@@ -72,6 +73,8 @@ export interface BodyRig {
   follow: number // 몸이 얼굴 각도를 따라가는 정도 (%)
   sway: number // 골반이 밀리고 무릎이 굽는 정도 (0~100, 50이 기본)
   mirror: boolean // 관절을 좌우 대칭으로 움직이기
+  poses: { a: number[]; b: number[] } // 연주 포즈 동작 1·2: 뼈마다 더 돌릴 각도 (rad)
+  playSpeed: number // 연주할 때 동작 1·2를 1초에 몇 번 오갈지
 }
 
 export interface Model {
@@ -192,7 +195,7 @@ function baseModel(): Model {
     eyes: { squash: false, y: 0.4, h: 0.05 },
     mouth: { animate: true },
     aspect: 1,
-    body: { enabled: false, joints: defaultJoints(), radius: 0.15, follow: 35, sway: 50, mirror: true },
+    body: { enabled: false, joints: defaultJoints(), radius: 0.15, follow: 35, sway: 50, mirror: true, poses: { a: new Array(12).fill(0), b: new Array(12).fill(0) }, playSpeed: 2 },
     layers: [],
   }
 }
@@ -238,6 +241,10 @@ export function normalizeModel(raw: any): Model {
   m.mouth = { ...base.mouth, ...raw.mouth }
   m.body = { ...base.body, ...raw.body }
   m.body.joints = { ...base.body.joints, ...raw.body?.joints }
+  m.body.poses = {
+    a: Array.from({ length: 12 }, (_, i) => raw.body?.poses?.a?.[i] || 0),
+    b: Array.from({ length: 12 }, (_, i) => raw.body?.poses?.b?.[i] || 0),
+  }
   m.layers = (raw.layers || []).map((l: any) => {
     const d = newLayer('blank')
     const layer: Layer = {

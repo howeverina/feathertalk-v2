@@ -18,7 +18,7 @@ const showSummary = computed(() => {
   const l = selected.value
   if (!l) return ''
   const n = l.expressions.filter(Boolean).length
-  return `${SHOW_LABEL[l.show]} · ${l.part == 'head' ? '머리' : '몸'}` + (beta ? '' : ` · 표정 ${n == 10 ? '전체' : n + '개'}`)
+  return `${SHOW_LABEL[l.show]} · ${({ head: '머리', body: '몸', fixed: '고정' } as Record<string, string>)[l.part]}` + (beta ? '' : ` · 표정 ${n == 10 ? '전체' : n + '개'}`)
 })
 const hairSummary = computed(() => {
   const h = selected.value?.hair
@@ -131,6 +131,7 @@ function toggleAll() {
           <div class="seg">
             <button :class="{ on: selected.part == 'head' }" title="고개를 따라 돌아가요" @click="selected.part = 'head'">머리</button>
             <button :class="{ on: selected.part == 'body' }" title="고개를 돌려도 그대로 있어요 (기울기만 따라가요)" @click="selected.part = 'body'">몸</button>
+            <button v-if="beta" :class="{ on: selected.part == 'fixed' }" title="어떤 움직임도 따라가지 않아요 (앞에 두는 드럼·피아노 같은 악기 등)" @click="selected.part = 'fixed'">고정</button>
           </div>
         </div>
         <div v-if="!beta" class="label-row">

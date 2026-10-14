@@ -106,7 +106,7 @@ export class HairSystem {
   update(dt: number, layers: Layer[], head: HeadState, t: number, breathLag = 0, allowBody = false) {
     const ids = new Set<string>()
     for (const l of layers) {
-      if (!l.hair.enabled || (l.part == 'body' && !allowBody)) continue
+      if (!l.hair.enabled || (l.part != 'head' && !allowBody)) continue
       ids.add(l.id)
       let sim = this.sims.get(l.id)
       if (!sim) {
@@ -163,6 +163,20 @@ export class Arms {
       upperL: this.upper.x - sway, foreL: this.fore.x,
       upperR: this.upper.x + sway, foreR: this.fore.x,
     }
+  }
+}
+
+// 연주 포즈: 연주 중이면 동작 1·2 사이를 부드럽게 오가고, 끝나면 기본 자세로 돌아간다
+export class PosePlayer {
+  w = 0 // 0 기본 자세 ~ 1 연주 자세
+
+  update(dt: number, playing: boolean, poses: { a: number[]; b: number[] }, speed: number, t: number): number[] {
+    const d = Math.min(dt, 0.1)
+    this.w = playing ? Math.min(1, this.w + d / 0.15) : Math.max(0, this.w - d / 0.3)
+    if (this.w == 0) return []
+    const k = 0.5 - 0.5 * Math.cos(2 * Math.PI * speed * t) // 0이면 동작 1, 1이면 동작 2
+    const w = this.w * this.w * (3 - 2 * this.w)
+    return poses.a.map((a, i) => w * (a + ((poses.b[i] || 0) - a) * k))
   }
 }
 
